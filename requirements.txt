@@ -17,3 +17,4 @@ requests==2.34.2
 resend==2.43.0
 SQLAlchemy==2.0.52
 uvicorn==0.52.4
+argon2-cffi==25.1.0
