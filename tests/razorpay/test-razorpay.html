@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Razorpay Test</title>
+</head>
+<body>
+
+<button id="pay-button">Pay ₹600</button>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<script>
+const options = {
+    key: "rzp_test_TZvY3Bb6OZK0qF",
+
+    amount: 60000,
+    currency: "INR",
+
+    name: "EnergyMax",
+    description: "EnergyMax Test Payment",
+
+    order_id: "order_TaDqfkLNcOyCLb",
+
+    handler: function (response) {
+        console.log("PAYMENT SUCCESS");
+        console.log("Payment ID:", response.razorpay_payment_id);
+        console.log("Order ID:", response.razorpay_order_id);
+        console.log("Signature:", response.razorpay_signature);
+
+        alert(
+            "Payment successful!\n\n" +
+            "Payment ID: " + response.razorpay_payment_id +
+            "\nOrder ID: " + response.razorpay_order_id
+        );
+    },
+
+    prefill: {
+        name: "Test Customer"
+    },
+
+    theme: {
+        color: "#3399cc"
+    }
+};
+
+const razorpay = new Razorpay(options);
+
+document.getElementById("pay-button").onclick = function () {
+    razorpay.open();
+};
+</script>
+
+</body>
+</html>

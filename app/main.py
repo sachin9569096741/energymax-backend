@@ -1,0 +1,172 @@
+from fastapi import FastAPI
+from app.core import cloudinary
+from fastapi.middleware.cors import CORSMiddleware
+from app.modules.admin.auth.routes.auth import (
+    router as admin_auth_router,
+)
+from app.modules.shop.catalog.routes.category import (
+    router as category_router,
+)
+from app.modules.admin.auth.routes.admin_user import (
+    router as admin_user_router,
+)
+from app.modules.admin.auth.routes.permissions import (
+    router as admin_permissions_router,
+    roles_router as admin_roles_router,
+    user_permissions_router as admin_user_permissions_router,
+)
+from app.modules.shop.catalog.routes.subcategory import (
+    router as subcategory_router,
+)
+from app.modules.shop.catalog.routes.product import (
+    router as product_router,
+)
+from app.modules.shop.cart.routes.guest_cart import (
+    router as guest_cart_router,
+)
+from app.modules.shop.cart.routes.customer_cart import (
+    router as customer_cart_router,
+)
+
+from app.modules.shop.catalog.routes.product_image import (
+    router as product_image_router,
+)
+from app.modules.shop.customer.routes.auth import (
+    router as customer_auth_router,
+)
+from app.modules.shop.customer.routes.otp import (
+    router as customer_otp_router,
+)
+from app.modules.shop.customer.routes.address import (
+    router as customer_address_router,
+)
+from app.modules.shop.checkout.routes.checkout import router as checkout_router
+from app.modules.shop.order.routes.order import router as order_router
+from app.modules.shop.payment.routes.payment import router as payment_router
+from app.modules.shop.payment.routes.refund import router as refund_router
+
+app = FastAPI(
+    title="EnergyMax API",
+    version="1.0.0",
+)
+
+# ---------------------------------------------------------
+# CORS
+# ---------------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Admin - Authentication
+# ---------------------------------------------------------
+
+app.include_router(
+    admin_auth_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    admin_permissions_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    admin_user_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    admin_roles_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    admin_user_permissions_router,
+    prefix="/api/v1",
+)
+
+# ---------------------------------------------------------
+# Shop - Catalog
+# ---------------------------------------------------------
+
+
+app.include_router(
+    category_router,
+    prefix="/api/v1/catalog",
+)
+
+app.include_router(
+    subcategory_router,
+    prefix="/api/v1/catalog",
+)
+
+app.include_router(
+    product_router,
+    prefix="/api/v1/catalog",
+)
+
+app.include_router(
+    product_image_router,
+    prefix="/api/v1/catalog",
+)
+
+# ---------------------------------------------------------
+# Shop - Cart
+# ---------------------------------------------------------
+
+app.include_router(
+    guest_cart_router,
+    prefix="/api/v1/shop",
+)
+
+app.include_router(
+    customer_cart_router,
+    prefix="/api/v1/shop",
+)
+
+app.include_router(
+    customer_auth_router,
+    prefix="/api/v1/shop",
+)
+
+app.include_router(
+    customer_otp_router,
+    prefix="/api/v1/shop",
+)
+
+app.include_router(
+    customer_address_router,
+    prefix="/api/v1/shop",
+)
+# ============================================================
+# SHOP - CHECKOUT
+# ============================================================
+
+app.include_router(
+    checkout_router,
+    prefix="/api/v1/shop",
+)
+
+app.include_router(
+    order_router,
+    prefix="/api/v1/shop",
+)
+app.include_router(payment_router, prefix="/api/v1/shop")
+app.include_router(refund_router, prefix="/api/v1/shop")
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+@app.get("/")
+def root():
+    return {
+        "message": "EnergyMax API is running."
+    }
+
