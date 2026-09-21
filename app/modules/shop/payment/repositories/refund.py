@@ -78,6 +78,22 @@ class RefundRepository:
 
         return Decimal(str(result or 0))
 
+
+    def get_total_successful_refunded(self, payment_id: int) -> Decimal:
+        statement = select(
+            func.coalesce(
+                func.sum(PaymentRefund.amount),
+                0,
+            )
+        ).where(
+            PaymentRefund.payment_id == payment_id,
+            PaymentRefund.status == "succeeded",
+        )
+
+        result = self.db.scalar(statement)
+
+        return Decimal(str(result or 0))
+
     def create(
         self,
         refund: PaymentRefund,

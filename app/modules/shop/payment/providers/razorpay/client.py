@@ -100,6 +100,16 @@ class RazorpayClient:
             payload,
         )
 
+
+    def fetch_refund(
+        self,
+        *,
+        provider_payment_id: str,
+        provider_refund_id: str,
+    ) -> dict[str, Any]:
+        return self.client.refund.fetch(
+            provider_refund_id
+        )
     def verify_payment_signature(
         self,
         *,

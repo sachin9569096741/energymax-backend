@@ -8,7 +8,8 @@ class PaymentProvider(ABC):
     Provider-agnostic contract for payment gateways.
 
     Every payment provider adapter must implement this interface.
-    The rest of the payment module must not depend on provider-specific SDKs.
+    The rest of the payment module must not depend on
+    provider-specific SDKs.
     """
 
     provider_name: str
@@ -23,7 +24,7 @@ class PaymentProvider(ABC):
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Create a payment/order on the provider.
+        Create a provider-side payment order.
 
         Expected normalized response:
         {
@@ -31,6 +32,7 @@ class PaymentProvider(ABC):
             "amount": Decimal,
             "currency": str,
             "status": str,
+            "payment_session_id": str | None,
             "raw_response": dict,
         }
         """
@@ -41,31 +43,21 @@ class PaymentProvider(ABC):
         self,
         *,
         provider_order_id: str,
-        provider_payment_id: str,
-        signature: str,
+        provider_payment_id: str | None = None,
     ) -> dict[str, Any]:
         """
-        Verify a payment with the provider.
+        Retrieve/verify payment status from the provider.
 
         Expected normalized response:
         {
-            "provider_payment_id": str,
+            "provider_payment_id": str | None,
             "provider_order_id": str,
+            "amount": Decimal | None,
+            "currency": str | None,
             "status": str,
+            "provider_status": str | None,
             "raw_response": dict,
         }
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def verify_webhook(
-        self,
-        *,
-        payload: bytes,
-        signature: str,
-    ) -> bool:
-        """
-        Verify the authenticity of a provider webhook.
         """
         raise NotImplementedError
 
@@ -73,7 +65,8 @@ class PaymentProvider(ABC):
     def refund_payment(
         self,
         *,
-        provider_payment_id: str,
+        provider_order_id: str,
+        provider_payment_id: str | None = None,
         amount: Decimal | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -83,10 +76,39 @@ class PaymentProvider(ABC):
         Expected normalized response:
         {
             "provider_refund_id": str,
+            "provider_payment_id": str | None,
+            "provider_order_id": str | None,
             "amount": Decimal,
+            "currency": str,
             "status": str,
+            "failure_code": str | None,
+            "failure_message": str | None,
             "raw_response": dict,
         }
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def fetch_refund(
+        self,
+        *,
+        provider_order_id: str,
+        provider_refund_id: str,
+    ) -> dict[str, Any]:
+        """
+        Retrieve an existing refund from the provider.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def verify_webhook(
+        self,
+        *,
+        payload: bytes,
+        headers: dict[str, str],
+    ) -> bool:
+        """
+        Verify the authenticity of a provider webhook.
         """
         raise NotImplementedError
 
@@ -97,16 +119,21 @@ class PaymentProvider(ABC):
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        Convert a provider webhook payload into a normalized structure.
+        Convert provider webhook data into a normalized structure.
 
         Expected normalized response:
         {
             "event_id": str,
             "event_type": str,
-            "payment_id": str | None,
+            "entity_type": str,
             "provider_order_id": str | None,
             "provider_payment_id": str | None,
+            "provider_refund_id": str | None,
+            "amount": Decimal | None,
+            "currency": str | None,
             "status": str | None,
+            "failure_code": str | None,
+            "failure_message": str | None,
             "raw_payload": dict,
         }
         """

@@ -69,3 +69,36 @@ def create_refund(
             detail="Failed to process refund.",
         )
     
+
+@router.post(
+    "/refunds/{refund_public_id}/reconcile",
+    response_model=RefundResponse,
+    status_code=200,
+)
+def reconcile_refund(
+    refund_public_id: str,
+    db: Session = Depends(get_db),
+):
+    service = RefundService(db)
+
+    try:
+        refund = service.reconcile_refund(
+            refund_public_id=refund_public_id,
+        )
+
+        db.commit()
+        db.refresh(refund)
+
+        return refund
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reconcile refund.",
+        )

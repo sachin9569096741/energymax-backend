@@ -11,6 +11,7 @@ from app.modules.shop.payment.models.payment import Payment
 from app.modules.shop.payment.models.payment_attempt import PaymentAttempt
 from app.modules.shop.payment.models.payment_event import PaymentEvent
 from app.modules.shop.payment.models.webhook_event import WebhookEvent
+from app.modules.shop.payment.repositories.refund import RefundRepository
 
 from app.modules.shop.payment.providers.exceptions import (
     PaymentProviderError,
@@ -24,6 +25,7 @@ from app.modules.shop.payment.services.payment_state import (
     PaymentStatus,
     transition_payment_status,
 )
+from app.modules.shop.payment.services.refund import RefundService
 
 
 class PaymentService:
@@ -75,7 +77,7 @@ class PaymentService:
         self,
         order_public_id: str,
         customer,
-        provider_name: str = "razorpay",
+        provider_name: str = "cashfree",
     ) -> Payment:
 
         # -----------------------------------------------------
@@ -216,6 +218,9 @@ class PaymentService:
                 metadata={
                     "order_public_id": order.public_id,
                     "order_number": order.order_number,
+                    "customer_id": customer.id,
+                    "customer_phone": customer.phone_number,
+                    "customer_email": customer.email,
                 },
             )
 
@@ -261,6 +266,9 @@ class PaymentService:
         ]
 
         payment.provider_order_id = provider_order_id
+        payment.payment_session_id = provider_result.get(
+            "payment_session_id"
+        )
 
         attempt.provider_order_id = provider_order_id
 
@@ -731,6 +739,289 @@ class PaymentService:
 
         return payment
 
+        # =========================================================
+    # RAZORPAY REFUND WEBHOOK
+    # =========================================================
+
+        # =========================================================
+    # RAZORPAY REFUND WEBHOOK
+    # =========================================================
+
+    def _process_refund_webhook(
+        self,
+        *,
+        webhook_event: WebhookEvent,
+        normalized: dict,
+    ) -> None:
+
+        event_type = normalized["event_type"]
+
+        provider_refund_id = normalized[
+            "provider_refund_id"
+        ]
+
+        provider_payment_id = normalized[
+            "provider_payment_id"
+        ]
+
+        amount = Decimal(
+            str(normalized["amount"])
+        )
+
+        currency = normalized["currency"]
+
+        provider_status = normalized.get(
+            "provider_status"
+        )
+
+        # -----------------------------------------------------
+        # 1. Find local refund
+        # -----------------------------------------------------
+
+        refund_repository = RefundRepository(
+            self.db
+        )
+
+        refund = (
+            refund_repository
+            .get_by_provider_refund_id(
+                provider_refund_id
+            )
+        )
+
+        if refund is None:
+
+            webhook_event.status = "failed"
+
+            webhook_event.error_message = (
+                "Refund not found for Razorpay "
+                f"refund '{provider_refund_id}'."
+            )
+
+            webhook_event.processed_at = (
+                datetime.now(timezone.utc)
+            )
+
+            self.payment_repository.save_webhook_event()
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Refund not found for Razorpay "
+                    "refund."
+                ),
+            )
+
+        # -----------------------------------------------------
+        # 2. Find payment
+        # -----------------------------------------------------
+
+        payment = (
+            self.payment_repository
+            .get_by_id(refund.payment_id)
+        )
+
+        if payment is None:
+
+            webhook_event.status = "failed"
+
+            webhook_event.error_message = (
+                "Payment not found for refund."
+            )
+
+            webhook_event.processed_at = (
+                datetime.now(timezone.utc)
+            )
+
+            self.payment_repository.save_webhook_event()
+
+            raise HTTPException(
+                status_code=400,
+                detail="Payment not found for refund.",
+            )
+
+        # -----------------------------------------------------
+        # 3. Validate provider payment ID
+        # -----------------------------------------------------
+
+        if (
+            payment.provider_payment_id
+            != provider_payment_id
+        ):
+
+            webhook_event.status = "failed"
+
+            webhook_event.error_message = (
+                "Refund webhook payment ID does not "
+                "match the local payment."
+            )
+
+            webhook_event.processed_at = (
+                datetime.now(timezone.utc)
+            )
+
+            self.payment_repository.save_webhook_event()
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Refund webhook payment ID does "
+                    "not match the local payment."
+                ),
+            )
+
+        # -----------------------------------------------------
+        # 4. Validate amount
+        # -----------------------------------------------------
+
+        if Decimal(str(refund.amount)) != amount:
+
+            webhook_event.status = "failed"
+
+            webhook_event.error_message = (
+                "Refund webhook amount does not "
+                "match the local refund."
+            )
+
+            webhook_event.processed_at = (
+                datetime.now(timezone.utc)
+            )
+
+            self.payment_repository.save_webhook_event()
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Refund webhook amount does not "
+                    "match the local refund."
+                ),
+            )
+
+        # -----------------------------------------------------
+        # 5. Validate currency
+        # -----------------------------------------------------
+
+        if (
+            refund.currency.upper()
+            != currency.upper()
+        ):
+
+            webhook_event.status = "failed"
+
+            webhook_event.error_message = (
+                "Refund webhook currency does not "
+                "match the local refund."
+            )
+
+            webhook_event.processed_at = (
+                datetime.now(timezone.utc)
+            )
+
+            self.payment_repository.save_webhook_event()
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Refund webhook currency does "
+                    "not match the local refund."
+                ),
+            )
+
+        # -----------------------------------------------------
+        # 6. Save provider response
+        # -----------------------------------------------------
+
+        refund.provider_response = (
+            normalized["raw_payload"]
+        )
+
+        # -----------------------------------------------------
+        # 7. Process refund status
+        # -----------------------------------------------------
+
+        if provider_status in {
+            "processed",
+            "succeeded",
+            "success",
+            "completed",
+        }:
+
+            refund.status = "succeeded"
+
+        elif provider_status in {
+            "failed",
+            "failure",
+        }:
+
+            refund.status = "failed"
+
+            refund.failure_code = (
+                normalized.get("failure_code")
+            )
+
+            refund.failure_message = (
+                normalized.get("failure_message")
+            )
+
+        else:
+
+            refund.status = "pending"
+
+        # -----------------------------------------------------
+        # 8. Synchronize payment state
+        # -----------------------------------------------------
+
+        refund_service = RefundService(self.db)
+
+        refund_service._sync_payment_state_after_refund(
+            payment=payment,
+            refund=refund,
+        )
+
+        # -----------------------------------------------------
+        # 9. Create payment event
+        # -----------------------------------------------------
+
+        self.payment_repository.create_event(
+            PaymentEvent(
+                public_id=str(uuid4()),
+                payment_id=payment.id,
+                attempt_id=None,
+                event_type=(
+                    f"refund_webhook_{event_type}"
+                ),
+                status=refund.status,
+                message=(
+                    "Razorpay refund webhook processed."
+                ),
+                event_data=self._json_safe(
+                    {
+                        "provider_refund_id":
+                            provider_refund_id,
+                        "provider_payment_id":
+                            provider_payment_id,
+                        "amount": amount,
+                        "currency": currency,
+                        "provider_status":
+                            provider_status,
+                    }
+                ),
+            )
+        )
+
+        # -----------------------------------------------------
+        # 10. Mark webhook processed
+        # -----------------------------------------------------
+
+        webhook_event.status = "processed"
+
+        webhook_event.error_message = None
+
+        webhook_event.processed_at = (
+            datetime.now(timezone.utc)
+        )
+
+        self.payment_repository.save()
     # =========================================================
     # RAZORPAY WEBHOOK
     # =========================================================
@@ -743,6 +1034,12 @@ class PaymentService:
     ) -> None:
 
         event_type = normalized["event_type"]
+        if normalized.get("entity_type") == "refund":
+            self._process_refund_webhook(
+                webhook_event=webhook_event,
+                normalized=normalized,
+            )
+            return
 
         provider_payment_id = normalized[
             "provider_payment_id"

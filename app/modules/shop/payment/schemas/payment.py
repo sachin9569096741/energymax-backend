@@ -11,6 +11,7 @@ class PaymentResponse(BaseModel):
     currency: str
     provider: str | None
     provider_order_id: str | None
+    payment_session_id: str | None
     provider_payment_id: str | None
     status: str
     created_at: datetime
@@ -18,8 +19,6 @@ class PaymentResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class VerifyPaymentRequest(BaseModel):
-    razorpay_payment_id: str
-    razorpay_order_id: str
-    razorpay_signature: str
 
+class VerifyPaymentRequest(BaseModel):
+    provider_payment_id: str | None = None

@@ -115,7 +115,12 @@ class RazorpayAdapter(PaymentProvider):
                 code="INVALID_WEBHOOK_SIGNATURE",
             ) from exc
 
-    def parse_webhook(self, *, payload: dict[str, Any]) -> dict[str, Any]:
+    def parse_webhook(
+        self,
+        *,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+
         event_type = payload.get("event")
 
         if not event_type:
@@ -123,16 +128,6 @@ class RazorpayAdapter(PaymentProvider):
                 "Razorpay webhook event type is missing.",
                 provider=self.provider_name,
                 code="WEBHOOK_EVENT_TYPE_MISSING",
-            )
-
-        if event_type not in {
-            "payment.captured",
-            "payment.failed",
-        }:
-            raise PaymentProviderError(
-                f"Unsupported Razorpay webhook event: {event_type}",
-                provider=self.provider_name,
-                code="UNSUPPORTED_WEBHOOK_EVENT",
             )
 
         payload_data = payload.get("payload")
@@ -144,67 +139,163 @@ class RazorpayAdapter(PaymentProvider):
                 code="INVALID_WEBHOOK_PAYLOAD",
             )
 
-        payment_data = payload_data.get("payment")
+        # =========================================================
+        # PAYMENT WEBHOOKS
+        # =========================================================
 
-        if not isinstance(payment_data, dict):
-            raise PaymentProviderError(
-                "Razorpay webhook payment data is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_PAYMENT_DATA_MISSING",
-            )
+        if event_type in {
+            "payment.captured",
+            "payment.failed",
+        }:
 
-        entity = payment_data.get("entity")
+            payment_data = payload_data.get("payment")
 
-        if not isinstance(entity, dict):
-            raise PaymentProviderError(
-                "Razorpay webhook payment entity is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_PAYMENT_ENTITY_MISSING",
-            )
+            if not isinstance(payment_data, dict):
+                raise PaymentProviderError(
+                    "Razorpay webhook payment data is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_PAYMENT_DATA_MISSING",
+                )
 
-        provider_payment_id = entity.get("id")
-        provider_order_id = entity.get("order_id")
-        amount = entity.get("amount")
-        currency = entity.get("currency")
-        provider_status = entity.get("status")
+            entity = payment_data.get("entity")
 
-        if not provider_payment_id:
-            raise PaymentProviderError(
-                "Razorpay webhook payment ID is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_PAYMENT_ID_MISSING",
-            )
+            if not isinstance(entity, dict):
+                raise PaymentProviderError(
+                    "Razorpay webhook payment entity is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_PAYMENT_ENTITY_MISSING",
+                )
 
-        if not provider_order_id:
-            raise PaymentProviderError(
-                "Razorpay webhook order ID is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_ORDER_ID_MISSING",
-            )
+            provider_payment_id = entity.get("id")
+            provider_order_id = entity.get("order_id")
+            amount = entity.get("amount")
+            currency = entity.get("currency")
+            provider_status = entity.get("status")
 
-        if amount is None:
-            raise PaymentProviderError(
-                "Razorpay webhook amount is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_AMOUNT_MISSING",
-            )
+            if not provider_payment_id:
+                raise PaymentProviderError(
+                    "Razorpay webhook payment ID is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_PAYMENT_ID_MISSING",
+                )
 
-        if not currency:
-            raise PaymentProviderError(
-                "Razorpay webhook currency is missing.",
-                provider=self.provider_name,
-                code="WEBHOOK_CURRENCY_MISSING",
-            )
+            if not provider_order_id:
+                raise PaymentProviderError(
+                    "Razorpay webhook order ID is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_ORDER_ID_MISSING",
+                )
 
-        return {
-            "event_type": event_type,
-            "provider_payment_id": provider_payment_id,
-            "provider_order_id": provider_order_id,
-            "amount": Decimal(str(amount)) / Decimal("100"),
-            "currency": currency,
-            "provider_status": provider_status,
-            "raw_payload": payload,
-        }
+            if amount is None:
+                raise PaymentProviderError(
+                    "Razorpay webhook amount is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_AMOUNT_MISSING",
+                )
+
+            if not currency:
+                raise PaymentProviderError(
+                    "Razorpay webhook currency is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_CURRENCY_MISSING",
+                )
+
+            return {
+                "entity_type": "payment",
+                "event_type": event_type,
+                "provider_payment_id": provider_payment_id,
+                "provider_order_id": provider_order_id,
+                "amount": Decimal(str(amount)) / Decimal("100"),
+                "currency": currency,
+                "provider_status": provider_status,
+                "raw_payload": payload,
+            }
+
+        # =========================================================
+        # REFUND WEBHOOKS
+        # =========================================================
+
+        if event_type in {
+            "refund.created",
+            "refund.processed",
+            "refund.failed",
+            "refund.speed_changed",
+        }:
+
+            refund_data = payload_data.get("refund")
+
+            if not isinstance(refund_data, dict):
+                raise PaymentProviderError(
+                    "Razorpay webhook refund data is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_DATA_MISSING",
+                )
+
+            entity = refund_data.get("entity")
+
+            if not isinstance(entity, dict):
+                raise PaymentProviderError(
+                    "Razorpay webhook refund entity is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_ENTITY_MISSING",
+                )
+
+            provider_refund_id = entity.get("id")
+            provider_payment_id = entity.get("payment_id")
+            amount = entity.get("amount")
+            currency = entity.get("currency")
+            provider_status = entity.get("status")
+
+            if not provider_refund_id:
+                raise PaymentProviderError(
+                    "Razorpay webhook refund ID is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_ID_MISSING",
+                )
+
+            if not provider_payment_id:
+                raise PaymentProviderError(
+                    "Razorpay webhook payment ID is missing from refund.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_PAYMENT_ID_MISSING",
+                )
+
+            if amount is None:
+                raise PaymentProviderError(
+                    "Razorpay webhook refund amount is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_AMOUNT_MISSING",
+                )
+
+            if not currency:
+                raise PaymentProviderError(
+                    "Razorpay webhook refund currency is missing.",
+                    provider=self.provider_name,
+                    code="WEBHOOK_REFUND_CURRENCY_MISSING",
+                )
+
+            return {
+                "entity_type": "refund",
+                "event_type": event_type,
+                "provider_refund_id": provider_refund_id,
+                "provider_payment_id": provider_payment_id,
+                "amount": Decimal(str(amount)) / Decimal("100"),
+                "currency": currency,
+                "provider_status": provider_status,
+                "failure_code": entity.get("error_code"),
+                "failure_message": entity.get("error_description"),
+                "raw_payload": payload,
+            }
+
+        # =========================================================
+        # UNSUPPORTED EVENT
+        # =========================================================
+
+        raise PaymentProviderError(
+            f"Unsupported Razorpay webhook event: {event_type}",
+            provider=self.provider_name,
+            code="UNSUPPORTED_WEBHOOK_EVENT",
+        )
 
     def refund_payment(
         self,
@@ -231,4 +322,29 @@ class RazorpayAdapter(PaymentProvider):
                 "Failed to create Razorpay refund.",
                 provider=self.provider_name,
                 code="REFUND_FAILED",
+            ) from exc
+
+
+    def fetch_refund(
+        self,
+        *,
+        provider_payment_id: str,
+        provider_refund_id: str,
+    ) -> dict[str, Any]:
+        try:
+            response = self.client.fetch_refund(
+                provider_payment_id=provider_payment_id,
+                provider_refund_id=provider_refund_id,
+            )
+
+            return self.mapper.map_refund_response(response)
+
+        except PaymentProviderError:
+            raise
+
+        except Exception as exc:
+            raise PaymentProviderError(
+                "Failed to fetch Razorpay refund.",
+                provider=self.provider_name,
+                code="REFUND_FETCH_FAILED",
             ) from exc

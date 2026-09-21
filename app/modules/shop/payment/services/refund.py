@@ -500,30 +500,10 @@ class RefundService:
         else:
             refund.status = "pending"
 
-        # ---------------------------------------------------------
-        # 19. Update payment status
-        # ---------------------------------------------------------
-
-        if refund.status == "succeeded":
-
-            total_refunded = (
-                already_refunded + refund_amount
-            )
-
-            if total_refunded >= payment_amount:
-
-                transition_payment_status(
-                    payment,
-                    PaymentStatus.REFUNDED,
-                )
-
-            else:
-
-                transition_payment_status(
-                    payment,
-                    PaymentStatus.PARTIALLY_REFUNDED,
-                )
-
+        self._sync_payment_state_after_refund(
+        payment=payment,
+        refund=refund,
+    )
         # ---------------------------------------------------------
         # 20. Create final audit event
         # ---------------------------------------------------------
@@ -575,6 +555,304 @@ class RefundService:
         # 21. Save
         # ---------------------------------------------------------
 
+        self.refund_repository.save()
+
+        return refund
+
+
+
+
+    def _sync_payment_state_after_refund(
+        self,
+        *,
+        payment,
+        refund,
+    ) -> None:
+        """
+        Synchronize payment status based on the current
+        successful/pending/failed refund state.
+        """
+
+        total_successful_refunded = (
+            self.refund_repository.get_total_successful_refunded(
+                payment.id
+            )
+        )
+
+        payment_amount = Decimal(str(payment.amount))
+
+        # ---------------------------------------------------------
+        # Successful refund
+        # ---------------------------------------------------------
+
+        if refund.status == "succeeded":
+
+            if total_successful_refunded >= payment_amount:
+                target_status = PaymentStatus.REFUNDED
+            else:
+                target_status = PaymentStatus.PARTIALLY_REFUNDED
+
+            if payment.status != target_status:
+                transition_payment_status(
+                    payment,
+                    target_status,
+                )
+
+        # ---------------------------------------------------------
+        # Pending refund
+        # ---------------------------------------------------------
+
+        elif refund.status == "pending":
+
+            if payment.status in {
+                PaymentStatus.SUCCEEDED,
+                PaymentStatus.PARTIALLY_REFUNDED,
+            }:
+                transition_payment_status(
+                    payment,
+                    PaymentStatus.REFUND_PENDING,
+                )
+
+        # ---------------------------------------------------------
+        # Failed refund
+        # ---------------------------------------------------------
+
+        elif refund.status == "failed":
+
+            if payment.status == PaymentStatus.REFUND_PENDING:
+
+                if total_successful_refunded > Decimal("0"):
+                    transition_payment_status(
+                        payment,
+                        PaymentStatus.PARTIALLY_REFUNDED,
+                    )
+                else:
+                    transition_payment_status(
+                        payment,
+                        PaymentStatus.SUCCEEDED,
+                    )
+
+    def reconcile_refund(
+        self,
+        *,
+        refund_public_id: str,
+    ) -> PaymentRefund:
+        # ---------------------------------------------------------
+        # 1. Get local refund
+        # ---------------------------------------------------------
+        refund = (
+            self.refund_repository.get_by_public_id(
+                refund_public_id
+            )
+        )
+
+        if refund is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Refund not found.",
+            )
+
+        # ---------------------------------------------------------
+        # 2. Get payment
+        # ---------------------------------------------------------
+        payment = self.payment_repository.get_by_id(
+            refund.payment_id
+        )
+
+        if payment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found for refund.",
+            )
+
+        # ---------------------------------------------------------
+        # 3. Provider IDs are required
+        # ---------------------------------------------------------
+        if not refund.provider_refund_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Provider refund ID is missing. "
+                    "Refund cannot be reconciled."
+                ),
+            )
+
+        if not payment.provider_payment_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Provider payment ID is missing. "
+                    "Refund cannot be reconciled."
+                ),
+            )
+
+        # ---------------------------------------------------------
+        # 4. Resolve provider
+        # ---------------------------------------------------------
+        provider_name = refund.provider
+
+        if not provider_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Refund provider is missing.",
+            )
+
+        provider = self.payment_router.get_provider(
+            provider_name
+        )
+
+        # ---------------------------------------------------------
+        # 5. Fetch provider refund
+        # ---------------------------------------------------------
+        try:
+            provider_response = provider.fetch_refund(
+                provider_payment_id=payment.provider_payment_id,
+                provider_refund_id=refund.provider_refund_id,
+            )
+
+        except PaymentProviderError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to reconcile refund "
+                    "with payment provider."
+                ),
+            ) from exc
+
+        # ---------------------------------------------------------
+        # 6. Validate refund ID
+        # ---------------------------------------------------------
+        if (
+            provider_response.get("provider_refund_id")
+            != refund.provider_refund_id
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail="Provider refund ID mismatch.",
+            )
+
+        # ---------------------------------------------------------
+        # 7. Validate payment association
+        # ---------------------------------------------------------
+        raw_response = (
+            provider_response.get("raw_response") or {}
+        )
+
+        provider_payment_id = raw_response.get(
+            "payment_id"
+        )
+
+        if (
+            provider_payment_id
+            and provider_payment_id
+            != payment.provider_payment_id
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail="Provider payment ID mismatch.",
+            )
+
+        # ---------------------------------------------------------
+        # 8. Validate amount
+        # ---------------------------------------------------------
+        provider_amount = Decimal(
+            str(provider_response.get("amount"))
+        )
+
+        if provider_amount != Decimal(
+            str(refund.amount)
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Refund amount mismatch with provider."
+                ),
+            )
+
+        # ---------------------------------------------------------
+        # 9. Validate currency
+        # ---------------------------------------------------------
+        if (
+            provider_response.get("currency")
+            != refund.currency
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Refund currency mismatch with provider."
+                ),
+            )
+
+        # ---------------------------------------------------------
+        # 10. Determine refund status
+        # ---------------------------------------------------------
+        provider_status = (
+            provider_response.get("status") or ""
+        ).lower()
+
+        if provider_status in {
+            "processed",
+            "succeeded",
+            "success",
+            "completed",
+        }:
+            refund.status = "succeeded"
+
+        elif provider_status in {
+            "failed",
+            "failure",
+        }:
+            refund.status = "failed"
+
+            refund.failure_code = (
+                raw_response.get("error_code")
+            )
+
+            refund.failure_message = (
+                raw_response.get("error_description")
+            )
+
+        else:
+            refund.status = "pending"
+
+        # ---------------------------------------------------------
+        # 11. Store latest provider response
+        # ---------------------------------------------------------
+        refund.provider_response = raw_response
+
+        # ---------------------------------------------------------
+        # 12. Create reconciliation event
+        # ---------------------------------------------------------
+        self.payment_repository.create_event(
+            PaymentEvent(
+                public_id=str(uuid4()),
+                payment_id=payment.id,
+                attempt_id=None,
+                event_type="refund_reconciled",
+                status=refund.status,
+                message=(
+                    "Refund reconciled with payment provider."
+                ),
+                event_data={
+                    "refund_id": refund.public_id,
+                    "provider_refund_id": (
+                        refund.provider_refund_id
+                    ),
+                    "provider_status": provider_status,
+                    "amount": str(refund.amount),
+                    "currency": refund.currency,
+                    "provider": provider_name,
+                },
+            )
+        )
+        # ---------------------------------------------------------
+# 11.5 Synchronize payment state
+# ---------------------------------------------------------
+
+        self._sync_payment_state_after_refund(
+            payment=payment,
+            refund=refund,
+        )
         self.refund_repository.save()
 
         return refund

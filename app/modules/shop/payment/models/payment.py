@@ -67,6 +67,11 @@ class Payment(Base):
         index=True,
     )
 
+    payment_session_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     provider_payment_id: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
@@ -107,7 +112,7 @@ class Payment(Base):
     )
 
     refunds = relationship(
-    "PaymentRefund",
-    back_populates="payment",
-    cascade="all, delete-orphan",
+        "PaymentRefund",
+        back_populates="payment",
+        cascade="all, delete-orphan",
 )

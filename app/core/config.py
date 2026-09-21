@@ -5,17 +5,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
+
+    # Cloudinary
     cloudinary_cloud_name: str
     cloudinary_api_key: str
     cloudinary_api_secret: str
 
-
-        # Email / Resend
+    # Email / Resend
     resend_api_key: str
     resend_from_email: str
     resend_from_name: str = "EnergyMax"
-    
-    ##admin authentication
+
+    # Admin authentication
     jwt_secret_key: str
     admin_user_id: str
     admin_password: str
@@ -23,11 +24,11 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
-    ##razorpay
-    razorpay_key_id: str
-    razorpay_key_secret: str
-    razorpay_webhook_secret: str
-
+    # Cashfree Payments
+    cashfree_app_id: str
+    cashfree_secret_key: str
+    cashfree_environment: str = "sandbox"
+    cashfree_api_version: str = "2025-01-01"
 
     model_config = SettingsConfigDict(
         env_file=".env",
