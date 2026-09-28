@@ -99,8 +99,10 @@ class PaymentService:
         # 2. One payment per order
         # -----------------------------------------------------
 
-        existing_payment = self.payment_repository.get_by_order_id(
-            order.id
+        existing_payment = (
+            self.payment_repository.get_by_order_id(
+                order.id
+            )
         )
 
         if existing_payment is not None:
@@ -218,9 +220,17 @@ class PaymentService:
                 metadata={
                     "order_public_id": order.public_id,
                     "order_number": order.order_number,
-                    "customer_id": customer.id,
-                    "customer_phone": customer.phone_number,
-                    "customer_email": customer.email,
+                    "customer_name": (
+                        getattr(customer, "name", None)
+                        or getattr(customer, "full_name", None)
+                        or "EnergyMax Customer"
+                    ),
+                    "customer_phone": customer.phone,
+                    "customer_email": getattr(
+                        customer,
+                        "email",
+                        None,
+                    ),
                 },
             )
 
@@ -266,8 +276,9 @@ class PaymentService:
         ]
 
         payment.provider_order_id = provider_order_id
-        payment.payment_session_id = provider_result.get(
-            "payment_session_id"
+
+        payment.payment_session_id = (
+            provider_result.get("payment_session_id")
         )
 
         attempt.provider_order_id = provider_order_id
@@ -300,6 +311,9 @@ class PaymentService:
                     "provider_order_id": provider_order_id,
                     "provider_status": provider_result.get(
                         "status"
+                    ),
+                    "payment_session_id": provider_result.get(
+                        "payment_session_id"
                     ),
                     "amount": str(payment.amount),
                     "currency": payment.currency,
@@ -362,20 +376,10 @@ class PaymentService:
             )
 
         # -----------------------------------------------------
-        # 4. Never trust frontend order ID
+        # 4. Provider order ID comes from our database
         # -----------------------------------------------------
 
-        if (
-            request.razorpay_order_id
-            != payment.provider_order_id
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Razorpay order ID does not match "
-                    "the payment."
-                ),
-            )
+        provider_order_id = payment.provider_order_id
 
         # -----------------------------------------------------
         # 5. Resolve provider
@@ -392,36 +396,44 @@ class PaymentService:
         try:
 
             verification = provider.verify_payment(
-                provider_order_id=payment.provider_order_id,
+                provider_order_id=provider_order_id,
                 provider_payment_id=(
-                    request.razorpay_payment_id
+                    request.provider_payment_id
                 ),
-                signature=request.razorpay_signature,
             )
 
         except PaymentProviderError as exc:
 
             raise HTTPException(
                 status_code=400,
-                detail="Payment verification failed.",
+                detail=exc.message,
             ) from exc
 
         except Exception as exc:
 
+            import traceback
+
+            print("========================================")
+            print("PAYMENT SERVICE VERIFY ERROR")
+            print("ERROR TYPE:", type(exc).__name__)
+            print("ERROR:", str(exc))
+            traceback.print_exc()
+            print("========================================")
+
             raise HTTPException(
-                status_code=400,
-                detail="Payment verification failed.",
+                status_code=500,
+                detail=f"Payment verification failed: {type(exc).__name__}: {str(exc)}",
             ) from exc
 
         # -----------------------------------------------------
         # 7. Extract provider values
         # -----------------------------------------------------
 
-        provider_payment_id = verification.get(
+        verified_payment_id = verification.get(
             "provider_payment_id"
         )
 
-        provider_order_id = verification.get(
+        verified_order_id = verification.get(
             "provider_order_id"
         )
 
@@ -438,12 +450,27 @@ class PaymentService:
         )
 
         # -----------------------------------------------------
-        # 8. Validate payment ID
+        # 8. Validate provider order ID
+        # -----------------------------------------------------
+
+        if verified_order_id != payment.provider_order_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Verified provider order ID does not "
+                    "match the payment."
+                ),
+            )
+
+        # -----------------------------------------------------
+        # 9. Validate payment ID when supplied
         # -----------------------------------------------------
 
         if (
-            provider_payment_id
-            != request.razorpay_payment_id
+            request.provider_payment_id
+            and verified_payment_id
+            and verified_payment_id
+            != request.provider_payment_id
         ):
             raise HTTPException(
                 status_code=400,
@@ -454,52 +481,40 @@ class PaymentService:
             )
 
         # -----------------------------------------------------
-        # 9. Validate order ID
+        # 10. Validate amount when provider returns it
         # -----------------------------------------------------
 
-        if (
-            provider_order_id
-            != payment.provider_order_id
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Verified order ID does not "
-                    "match the payment."
-                ),
-            )
+        if provider_amount is not None:
+
+            if (
+                Decimal(str(provider_amount))
+                != Decimal(str(payment.amount))
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Payment amount does not match "
+                        "the order amount."
+                    ),
+                )
 
         # -----------------------------------------------------
-        # 10. Validate amount
+        # 11. Validate currency when provider returns it
         # -----------------------------------------------------
 
-        if (
-            Decimal(str(provider_amount))
-            != Decimal(str(payment.amount))
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Payment amount does not match "
-                    "the order amount."
-                ),
-            )
+        if provider_currency is not None:
 
-        # -----------------------------------------------------
-        # 11. Validate currency
-        # -----------------------------------------------------
-
-        if (
-            provider_currency.upper()
-            != payment.currency.upper()
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Payment currency does not match "
-                    "the order currency."
-                ),
-            )
+            if (
+                provider_currency.upper()
+                != payment.currency.upper()
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Payment currency does not match "
+                        "the order currency."
+                    ),
+                )
 
         # -----------------------------------------------------
         # 12. Get latest attempt
@@ -516,22 +531,38 @@ class PaymentService:
             )
 
         # -----------------------------------------------------
-        # 13. Save provider payment ID
+        # 13. Save provider payment ID when available
         # -----------------------------------------------------
 
-        attempt.provider_payment_id = (
-            provider_payment_id
-        )
+        if verified_payment_id:
 
-        payment.provider_payment_id = (
-            provider_payment_id
-        )
+            attempt.provider_payment_id = (
+                verified_payment_id
+            )
+
+            payment.provider_payment_id = (
+                verified_payment_id
+            )
 
         # =====================================================
-        # CAPTURED
+        # SUCCEEDED
         # =====================================================
 
-        if provider_status == "captured":
+        if provider_status in {
+            "succeeded",
+            "captured",
+            "success",
+            "completed",
+        }:
+
+            if not verified_payment_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Provider reported successful payment "
+                        "without a payment ID."
+                    ),
+                )
 
             already_succeeded = (
                 payment.status
@@ -565,7 +596,7 @@ class PaymentService:
                         event_type="payment_succeeded",
                         status=PaymentStatus.SUCCEEDED,
                         message=(
-                            "Razorpay payment verified "
+                            "Cashfree payment verified "
                             "successfully."
                         ),
                         event_data=self._json_safe(
@@ -585,9 +616,7 @@ class PaymentService:
             if order is None:
                 raise HTTPException(
                     status_code=500,
-                    detail=(
-                        "Order not found for payment."
-                    ),
+                    detail="Order not found for payment.",
                 )
 
             # -------------------------------------------------
@@ -630,7 +659,7 @@ class PaymentService:
                         event_type="payment_authorized",
                         status=PaymentStatus.AUTHORIZED,
                         message=(
-                            "Razorpay payment was "
+                            "Cashfree payment was "
                             "authorized."
                         ),
                         event_data=self._json_safe(
@@ -646,7 +675,7 @@ class PaymentService:
         elif provider_status == "failed":
 
             # -------------------------------------------------
-            # Never downgrade a successful payment
+            # Never downgrade successful payment
             # -------------------------------------------------
 
             if payment.status in {
@@ -663,7 +692,7 @@ class PaymentService:
                         event_type="payment_failed_ignored",
                         status=payment.status,
                         message=(
-                            "Late Razorpay failure "
+                            "Late Cashfree failure "
                             "status ignored because "
                             f"payment is already "
                             f"'{payment.status}'."
@@ -700,13 +729,48 @@ class PaymentService:
                             event_type="payment_failed",
                             status=PaymentStatus.FAILED,
                             message=(
-                                "Razorpay payment failed."
+                                "Cashfree payment failed."
                             ),
                             event_data=self._json_safe(
                                 verification
                             ),
                         )
                     )
+
+        # =====================================================
+        # PENDING / PROCESSING
+        # =====================================================
+
+        elif provider_status in {
+            None,
+            "pending",
+            "processing",
+        }:
+
+            if payment.status == PaymentStatus.CREATED:
+
+                transition_payment_status(
+                    payment,
+                    PaymentStatus.PENDING,
+                )
+
+            attempt.status = PaymentStatus.PENDING
+
+            self.payment_repository.create_event(
+                PaymentEvent(
+                    public_id=str(uuid4()),
+                    payment_id=payment.id,
+                    attempt_id=attempt.id,
+                    event_type="payment_status_checked",
+                    status=PaymentStatus.PENDING,
+                    message=(
+                        "Cashfree payment is still pending."
+                    ),
+                    event_data=self._json_safe(
+                        verification
+                    ),
+                )
+            )
 
         # =====================================================
         # UNKNOWN PROVIDER STATUS
@@ -722,7 +786,7 @@ class PaymentService:
                     event_type="payment_status_checked",
                     status=payment.status,
                     message=(
-                        "Razorpay payment status checked: "
+                        "Cashfree payment status checked: "
                         f"{provider_status}."
                     ),
                     event_data=self._json_safe(
@@ -739,12 +803,8 @@ class PaymentService:
 
         return payment
 
-        # =========================================================
-    # RAZORPAY REFUND WEBHOOK
     # =========================================================
-
-        # =========================================================
-    # RAZORPAY REFUND WEBHOOK
+    # CASHFREE REFUND WEBHOOK
     # =========================================================
 
     def _process_refund_webhook(
@@ -794,7 +854,7 @@ class PaymentService:
             webhook_event.status = "failed"
 
             webhook_event.error_message = (
-                "Refund not found for Razorpay "
+                "Refund not found for Cashfree "
                 f"refund '{provider_refund_id}'."
             )
 
@@ -807,7 +867,7 @@ class PaymentService:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Refund not found for Razorpay "
+                    "Refund not found for Cashfree "
                     "refund."
                 ),
             )
@@ -971,7 +1031,9 @@ class PaymentService:
         # 8. Synchronize payment state
         # -----------------------------------------------------
 
-        refund_service = RefundService(self.db)
+        refund_service = RefundService(
+            self.db
+        )
 
         refund_service._sync_payment_state_after_refund(
             payment=payment,
@@ -992,7 +1054,7 @@ class PaymentService:
                 ),
                 status=refund.status,
                 message=(
-                    "Razorpay refund webhook processed."
+                    "Cashfree refund webhook processed."
                 ),
                 event_data=self._json_safe(
                     {
@@ -1022,11 +1084,12 @@ class PaymentService:
         )
 
         self.payment_repository.save()
+
     # =========================================================
-    # RAZORPAY WEBHOOK
+    # CASHFREE WEBHOOK
     # =========================================================
 
-    def process_razorpay_webhook(
+    def process_cashfree_webhook(
         self,
         *,
         webhook_event: WebhookEvent,
@@ -1034,11 +1097,14 @@ class PaymentService:
     ) -> None:
 
         event_type = normalized["event_type"]
+
         if normalized.get("entity_type") == "refund":
+
             self._process_refund_webhook(
                 webhook_event=webhook_event,
                 normalized=normalized,
             )
+
             return
 
         provider_payment_id = normalized[
@@ -1071,7 +1137,7 @@ class PaymentService:
             webhook_event.status = "ignored"
 
             webhook_event.error_message = (
-                "Payment not found for Razorpay "
+                "Payment not found for Cashfree "
                 f"order '{provider_order_id}'."
             )
 
@@ -1199,15 +1265,23 @@ class PaymentService:
                 ),
             )
 
+        # -----------------------------------------------------
+        # 6. Save provider payment ID
+        # -----------------------------------------------------
+
+        payment.provider_payment_id = (
+            provider_payment_id
+        )
+
         attempt.provider_payment_id = (
             provider_payment_id
         )
 
         # =====================================================
-        # PAYMENT CAPTURED
+        # PAYMENT SUCCEEDED
         # =====================================================
 
-        if event_type == "payment.captured":
+        if event_type == "payment.succeeded":
 
             already_succeeded = (
                 payment.status
@@ -1229,18 +1303,6 @@ class PaymentService:
                     PaymentStatus.SUCCEEDED,
                 )
 
-            # -------------------------------------------------
-            # Save provider payment ID
-            # -------------------------------------------------
-
-            payment.provider_payment_id = (
-                provider_payment_id
-            )
-
-            attempt.provider_payment_id = (
-                provider_payment_id
-            )
-
             attempt.status = PaymentStatus.SUCCEEDED
 
             # -------------------------------------------------
@@ -1258,7 +1320,7 @@ class PaymentService:
                         status=PaymentStatus.SUCCEEDED,
                         message=(
                             "Payment confirmed by "
-                            "Razorpay webhook."
+                            "Cashfree webhook."
                         ),
                         event_data=normalized[
                             "raw_payload"
@@ -1329,7 +1391,7 @@ class PaymentService:
                         event_type="payment_failed_ignored",
                         status=payment.status,
                         message=(
-                            "Late Razorpay failure "
+                            "Late Cashfree failure "
                             "webhook ignored because "
                             f"payment is already "
                             f"'{payment.status}'."
@@ -1367,7 +1429,7 @@ class PaymentService:
                             status=PaymentStatus.FAILED,
                             message=(
                                 "Payment failed according "
-                                "to Razorpay webhook."
+                                "to Cashfree webhook."
                             ),
                             event_data=normalized[
                                 "raw_payload"
@@ -1384,7 +1446,7 @@ class PaymentService:
             webhook_event.status = "failed"
 
             webhook_event.error_message = (
-                "Unsupported Razorpay webhook event: "
+                "Unsupported Cashfree webhook event: "
                 f"{event_type}"
             )
 
@@ -1397,7 +1459,7 @@ class PaymentService:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Unsupported Razorpay webhook event: "
+                    "Unsupported Cashfree webhook event: "
                     f"{event_type}"
                 ),
             )

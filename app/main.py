@@ -40,10 +40,17 @@ from app.modules.shop.customer.routes.otp import (
 from app.modules.shop.customer.routes.address import (
     router as customer_address_router,
 )
+from app.modules.shop.customer.routes.profile import (
+    router as profile_router,
+)
 from app.modules.shop.checkout.routes.checkout import router as checkout_router
 from app.modules.shop.order.routes.order import router as order_router
 from app.modules.shop.payment.routes.payment import router as payment_router
 from app.modules.shop.payment.routes.refund import router as refund_router
+
+from app.modules.admin.order.routes import (
+    order_router as admin_order_router,
+)
 
 app = FastAPI(
     title="EnergyMax API",
@@ -59,6 +66,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
         "https://energymaxgroup.in",
         "https://www.energymaxgroup.in",
     ],
@@ -91,6 +100,10 @@ app.include_router(
 
 app.include_router(
     admin_user_permissions_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    admin_order_router,
     prefix="/api/v1",
 )
 
@@ -140,6 +153,10 @@ app.include_router(
 
 app.include_router(
     customer_otp_router,
+    prefix="/api/v1/shop",
+)
+app.include_router(
+    profile_router,
     prefix="/api/v1/shop",
 )
 

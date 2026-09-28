@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from decimal import Decimal
+import json
 from typing import Any
 
 from app.core.config import settings
@@ -11,6 +11,8 @@ from app.modules.shop.payment.providers.base import PaymentProvider
 from app.modules.shop.payment.providers.cashfree.client import CashfreeClient
 from app.modules.shop.payment.providers.cashfree.mapper import CashfreeMapper
 from app.modules.shop.payment.providers.exceptions import (
+    PaymentProviderAuthenticationError,
+    PaymentProviderError,
     PaymentProviderResponseError,
     PaymentProviderSignatureError,
 )
@@ -18,7 +20,14 @@ from app.modules.shop.payment.providers.exceptions import (
 
 class CashfreeAdapter(PaymentProvider):
     """
-    Cashfree implementation of the provider-agnostic payment contract.
+    Cashfree implementation of the provider-neutral PaymentProvider contract.
+
+    Responsibilities:
+    - Communicate with Cashfree through CashfreeClient.
+    - Normalize Cashfree responses through CashfreeMapper.
+    - Verify Cashfree webhook signatures.
+    - Parse Cashfree payment/refund webhooks.
+    - Keep database/business logic outside the provider layer.
     """
 
     provider_name = "cashfree"
@@ -27,83 +36,86 @@ class CashfreeAdapter(PaymentProvider):
         self,
         *,
         client: CashfreeClient,
-
     ):
         self.client = client
 
-
     # =========================================================
-    # CREATE PAYMENT ORDER
+    # PAYMENT ORDER
     # =========================================================
 
     def create_payment_order(
         self,
         *,
         payment_id: str,
-        amount: Decimal,
+        amount,
         currency: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
 
-        metadata = metadata or {}
+        if amount is None:
+            raise PaymentProviderResponseError(
+                "Payment amount is required.",
+                provider=self.provider_name,
+                code="missing_amount",
+            )
 
-        order_id = metadata.get("provider_order_id") or payment_id
+        if amount <= 0:
+            raise PaymentProviderResponseError(
+                "Payment amount must be greater than zero.",
+                provider=self.provider_name,
+                code="invalid_amount",
+            )
+
+        if not currency:
+            raise PaymentProviderResponseError(
+                "Payment currency is required.",
+                provider=self.provider_name,
+                code="missing_currency",
+            )
+
+        if currency.upper() != "INR":
+            raise PaymentProviderResponseError(
+                "Cashfree currently supports INR payments in this integration.",
+                provider=self.provider_name,
+                code="unsupported_currency",
+            )
+
+        metadata = metadata or {}
 
         customer_name = (
             metadata.get("customer_name")
             or "EnergyMax Customer"
         )
 
-        customer_phone = metadata.get("customer_phone")
+        customer_phone = (
+            metadata.get("customer_phone")
+        )
 
         if not customer_phone:
             raise PaymentProviderResponseError(
-                "Customer phone is required for Cashfree order creation.",
-                provider="cashfree",
+                "Customer phone is required for Cashfree payment creation.",
+                provider=self.provider_name,
                 code="missing_customer_phone",
             )
 
-        customer_email = metadata.get("customer_email")
+        customer_email = (
+            metadata.get("customer_email")
+        )
 
-        return_url = metadata.get("return_url")
-        notify_url = metadata.get("notify_url")
-
-        order_note = metadata.get("order_note")
-
-        order_tags = metadata.get("order_tags")
-
-        if order_tags is not None and not isinstance(
-            order_tags,
-            dict,
-        ):
-            order_tags = None
+        order_id = str(
+            metadata.get("order_public_id")
+            or payment_id
+        )
 
         response = self.client.create_order(
-            order_id=str(order_id),
+            order_id=order_id,
             order_amount=amount,
-            customer_name=str(customer_name),
+            customer_name=customer_name,
             customer_phone=str(customer_phone),
-            customer_email=(
-                str(customer_email)
-                if customer_email
-                else None
-            ),
-            return_url=(
-                str(return_url)
-                if return_url
-                else None
-            ),
-            notify_url=(
-                str(notify_url)
-                if notify_url
-                else None
-            ),
+            customer_email=customer_email,
             order_note=(
-                str(order_note)
-                if order_note
-                else None
+                metadata.get("order_number")
             ),
-            order_tags=order_tags,
             idempotency_key=payment_id,
         )
 
@@ -111,28 +123,43 @@ class CashfreeAdapter(PaymentProvider):
             response
         )
 
-        provider_amount = normalized.get("amount")
+        provider_order_id = normalized.get(
+            "provider_order_id"
+        )
+
+        if not provider_order_id:
+            raise PaymentProviderResponseError(
+                "Cashfree did not return an order ID.",
+                provider=self.provider_name,
+                code="missing_provider_order_id",
+            )
+
+        provider_amount = normalized.get(
+            "amount"
+        )
 
         if (
             provider_amount is not None
             and provider_amount != amount
         ):
             raise PaymentProviderResponseError(
-                "Cashfree returned an order amount that does not "
-                "match the requested payment amount.",
-                provider="cashfree",
+                "Cashfree returned an unexpected payment amount.",
+                provider=self.provider_name,
                 code="amount_mismatch",
             )
 
-        provider_currency = normalized.get("currency")
+        provider_currency = normalized.get(
+            "currency"
+        )
 
         if (
             provider_currency
-            and provider_currency.upper() != currency.upper()
+            and provider_currency.upper()
+            != currency.upper()
         ):
             raise PaymentProviderResponseError(
                 "Cashfree returned an unexpected currency.",
-                provider="cashfree",
+                provider=self.provider_name,
                 code="currency_mismatch",
             )
 
@@ -149,66 +176,99 @@ class CashfreeAdapter(PaymentProvider):
         provider_payment_id: str | None = None,
     ) -> dict[str, Any]:
 
+        if not provider_order_id:
+            raise PaymentProviderResponseError(
+                "Provider order ID is required.",
+                provider=self.provider_name,
+                code="missing_provider_order_id",
+            )
+
         payments = self.client.get_payments_for_order(
             order_id=provider_order_id
         )
 
-        if not payments:
+        if not isinstance(payments, list):
             raise PaymentProviderResponseError(
-                "Cashfree returned no payment transactions "
-                "for this order.",
-                provider="cashfree",
-                code="payment_not_found",
+                "Cashfree returned an invalid payments response.",
+                provider=self.provider_name,
+                code="invalid_payments_response",
             )
+
+        if not payments:
+            return {
+                "provider_payment_id": None,
+                "provider_order_id": provider_order_id,
+                "amount": None,
+                "currency": None,
+                "status": "pending",
+                "provider_status": None,
+                "raw_response": payments,
+            }
 
         normalized_payments = [
             CashfreeMapper.map_payment(payment)
             for payment in payments
+            if isinstance(payment, dict)
         ]
+
+        if not normalized_payments:
+            raise PaymentProviderResponseError(
+                "Cashfree returned no valid payment records.",
+                provider=self.provider_name,
+                code="no_valid_payment_records",
+            )
+
+        selected_payment = None
+
+        # -----------------------------------------------------
+        # Prefer explicitly requested payment ID
+        # -----------------------------------------------------
 
         if provider_payment_id:
-            matching = [
-                payment
-                for payment in normalized_payments
-                if payment.get("provider_payment_id")
-                == provider_payment_id
-            ]
+            for payment in normalized_payments:
+                if (
+                    payment.get("provider_payment_id")
+                    == provider_payment_id
+                ):
+                    selected_payment = payment
+                    break
 
-            if not matching:
-                raise PaymentProviderResponseError(
-                    "Cashfree payment ID does not belong "
-                    "to this order.",
-                    provider="cashfree",
-                    code="payment_order_mismatch",
-                )
+        # -----------------------------------------------------
+        # Otherwise prefer successful payment
+        # -----------------------------------------------------
 
-            return matching[0]
+        if selected_payment is None:
+            for payment in normalized_payments:
+                if payment.get("status") == "succeeded":
+                    selected_payment = payment
+                    break
 
-        # Prefer a successful transaction.
-        successful = [
-            payment
-            for payment in normalized_payments
-            if payment.get("status") == "succeeded"
-        ]
+        # -----------------------------------------------------
+        # Then pending payment
+        # -----------------------------------------------------
 
-        if successful:
-            return successful[-1]
+        if selected_payment is None:
+            for payment in normalized_payments:
+                if payment.get("status") == "pending":
+                    selected_payment = payment
+                    break
 
-        # Otherwise prefer pending.
-        pending = [
-            payment
-            for payment in normalized_payments
-            if payment.get("status") == "pending"
-        ]
+        # -----------------------------------------------------
+        # Finally use latest returned payment
+        # -----------------------------------------------------
 
-        if pending:
-            return pending[-1]
+        if selected_payment is None:
+            selected_payment = normalized_payments[-1]
 
-        # Otherwise return the most recent transaction.
-        return normalized_payments[-1]
+        selected_payment["provider_order_id"] = (
+            selected_payment.get("provider_order_id")
+            or provider_order_id
+        )
+
+        return selected_payment
 
     # =========================================================
-    # REFUND
+    # REFUND PAYMENT
     # =========================================================
 
     def refund_payment(
@@ -216,78 +276,95 @@ class CashfreeAdapter(PaymentProvider):
         *,
         provider_order_id: str,
         provider_payment_id: str | None = None,
-        amount: Decimal | None = None,
+        amount=None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+
+        if not provider_order_id:
+            raise PaymentProviderResponseError(
+                "Provider order ID is required for refund.",
+                provider=self.provider_name,
+                code="missing_provider_order_id",
+            )
 
         if amount is None:
             raise PaymentProviderResponseError(
                 "Refund amount is required.",
-                provider="cashfree",
+                provider=self.provider_name,
                 code="missing_refund_amount",
+            )
+
+        if amount <= 0:
+            raise PaymentProviderResponseError(
+                "Refund amount must be greater than zero.",
+                provider=self.provider_name,
+                code="invalid_refund_amount",
             )
 
         metadata = metadata or {}
 
-        refund_id = metadata.get("refund_id")
+        refund_id = metadata.get(
+            "refund_id"
+        )
 
         if not refund_id:
             raise PaymentProviderResponseError(
-                "Refund ID is required for Cashfree refunds.",
-                provider="cashfree",
+                "Refund ID is required.",
+                provider=self.provider_name,
                 code="missing_refund_id",
             )
 
-        reason = metadata.get("reason")
+        refund_note = (
+            metadata.get("refund_note")
+            or "Customer refund"
+        )
 
         refund_speed = (
             metadata.get("refund_speed")
             or "STANDARD"
         )
 
+        idempotency_key = (
+            metadata.get("idempotency_key")
+            or refund_id
+        )
+
         response = self.client.create_refund(
             order_id=provider_order_id,
             refund_id=str(refund_id),
-            refund_amount=amount,
-            refund_note=(
-                str(reason)
-                if reason
-                else None
-            ),
-            refund_speed=str(refund_speed),
-            idempotency_key=str(refund_id),
+            refund_amount=float(amount),
+            refund_note=refund_note,
+            refund_speed=refund_speed,
+            idempotency_key=idempotency_key,
         )
 
         normalized = CashfreeMapper.map_refund(
             response
         )
 
-        provider_amount = normalized.get("amount")
+        provider_refund_id = normalized.get(
+            "provider_refund_id"
+        )
+
+        if not provider_refund_id:
+            raise PaymentProviderResponseError(
+                "Cashfree did not return a refund ID.",
+                provider=self.provider_name,
+                code="missing_provider_refund_id",
+            )
+
+        provider_amount = normalized.get(
+            "amount"
+        )
 
         if (
             provider_amount is not None
             and provider_amount != amount
         ):
             raise PaymentProviderResponseError(
-                "Cashfree returned a refund amount that does not "
-                "match the requested refund amount.",
-                provider="cashfree",
+                "Cashfree returned an unexpected refund amount.",
+                provider=self.provider_name,
                 code="refund_amount_mismatch",
-            )
-
-        normalized_payment_id = normalized.get(
-            "provider_payment_id"
-        )
-
-        if (
-            provider_payment_id
-            and normalized_payment_id
-            and normalized_payment_id != provider_payment_id
-        ):
-            raise PaymentProviderResponseError(
-                "Cashfree refund belongs to a different payment.",
-                provider="cashfree",
-                code="refund_payment_mismatch",
             )
 
         return normalized
@@ -303,17 +380,33 @@ class CashfreeAdapter(PaymentProvider):
         provider_refund_id: str,
     ) -> dict[str, Any]:
 
+        if not provider_order_id:
+            raise PaymentProviderResponseError(
+                "Provider order ID is required.",
+                provider=self.provider_name,
+                code="missing_provider_order_id",
+            )
+
+        if not provider_refund_id:
+            raise PaymentProviderResponseError(
+                "Provider refund ID is required.",
+                provider=self.provider_name,
+                code="missing_provider_refund_id",
+            )
+
         response = self.client.get_refund(
             order_id=provider_order_id,
             refund_id=provider_refund_id,
         )
 
-        return CashfreeMapper.map_refund(
+        normalized = CashfreeMapper.map_refund(
             response
         )
 
+        return normalized
+
     # =========================================================
-    # WEBHOOK VERIFICATION
+    # WEBHOOK SIGNATURE VERIFICATION
     # =========================================================
 
     def verify_webhook(
@@ -335,16 +428,16 @@ class CashfreeAdapter(PaymentProvider):
 
         if not signature:
             raise PaymentProviderSignatureError(
-                "Missing Cashfree webhook signature.",
-                provider="cashfree",
-                code="missing_signature",
+                "Cashfree webhook signature is missing.",
+                provider=self.provider_name,
+                code="missing_webhook_signature",
             )
 
         if not timestamp:
             raise PaymentProviderSignatureError(
-                "Missing Cashfree webhook timestamp.",
-                provider="cashfree",
-                code="missing_timestamp",
+                "Cashfree webhook timestamp is missing.",
+                provider=self.provider_name,
+                code="missing_webhook_timestamp",
             )
 
         signed_payload = (
@@ -353,14 +446,17 @@ class CashfreeAdapter(PaymentProvider):
         )
 
         digest = hmac.new(
-            settings.cashfree_webhook_secret.encode("utf-8"),
+            settings.cashfree_secret_key.encode(
+                "utf-8"
+            ),
             signed_payload,
             hashlib.sha256,
         ).digest()
 
-        expected_signature = base64.b64encode(
-            digest
-        ).decode("utf-8")
+        expected_signature = (
+            base64.b64encode(digest)
+            .decode("utf-8")
+        )
 
         if not hmac.compare_digest(
             expected_signature,
@@ -368,25 +464,11 @@ class CashfreeAdapter(PaymentProvider):
         ):
             raise PaymentProviderSignatureError(
                 "Invalid Cashfree webhook signature.",
-                provider="cashfree",
-                code="invalid_signature",
+                provider=self.provider_name,
+                code="invalid_webhook_signature",
             )
 
         return True
-
-    @staticmethod
-    def _get_header(
-        headers: dict[str, str],
-        name: str,
-    ) -> str | None:
-
-        target = name.lower()
-
-        for key, value in headers.items():
-            if key.lower() == target:
-                return value
-
-        return None
 
     # =========================================================
     # WEBHOOK PARSING
@@ -397,6 +479,13 @@ class CashfreeAdapter(PaymentProvider):
         *,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+
+        if not isinstance(payload, dict):
+            raise PaymentProviderResponseError(
+                "Invalid Cashfree webhook payload.",
+                provider=self.provider_name,
+                code="invalid_webhook_payload",
+            )
 
         event_type = (
             payload.get("type")
@@ -409,7 +498,7 @@ class CashfreeAdapter(PaymentProvider):
         if not isinstance(data, dict):
             raise PaymentProviderResponseError(
                 "Invalid Cashfree webhook data.",
-                provider="cashfree",
+                provider=self.provider_name,
                 code="invalid_webhook_data",
             )
 
@@ -426,9 +515,9 @@ class CashfreeAdapter(PaymentProvider):
         if not isinstance(refund_data, dict):
             refund_data = {}
 
-        # -----------------------------------------------------
-        # Refund webhook
-        # -----------------------------------------------------
+        # =====================================================
+        # REFUND WEBHOOK
+        # =====================================================
 
         if refund_data:
 
@@ -453,20 +542,26 @@ class CashfreeAdapter(PaymentProvider):
 
             currency = (
                 CashfreeMapper._string(
-                    refund_data.get("refund_currency")
+                    refund_data.get(
+                        "refund_currency"
+                    )
                 )
                 or "INR"
             )
 
             provider_status = (
                 CashfreeMapper._string(
-                    refund_data.get("refund_status")
+                    refund_data.get(
+                        "refund_status"
+                    )
                 )
             )
 
             event_id = (
                 CashfreeMapper._string(
-                    refund_data.get("refund_id")
+                    refund_data.get(
+                        "refund_id"
+                    )
                 )
                 or self._build_webhook_event_id(
                     payload=payload,
@@ -506,112 +601,111 @@ class CashfreeAdapter(PaymentProvider):
                 ),
                 "failure_code": (
                     CashfreeMapper._string(
-                        refund_data.get("refund_arn")
+                        refund_data.get(
+                            "refund_arn"
+                        )
                     )
                 ),
                 "failure_message": (
                     CashfreeMapper._string(
-                        refund_data.get("refund_note")
+                        refund_data.get(
+                            "refund_note"
+                        )
                     )
                 ),
                 "raw_payload": payload,
             }
 
-        # -----------------------------------------------------
-        # Payment webhook
-        # -----------------------------------------------------
+        # =====================================================
+        # PAYMENT WEBHOOK
+        # =====================================================
 
-        provider_order_id = (
-            order_data.get("order_id")
-            or payment_data.get("order_id")
-            or payload.get("order_id")
-        )
-
-        provider_payment_id = (
-            payment_data.get("cf_payment_id")
-            or payment_data.get("payment_id")
-        )
-
-        amount = CashfreeMapper._decimal(
-            payment_data.get("payment_amount")
-            or order_data.get("order_amount")
-        )
-
-        currency = (
-            CashfreeMapper._string(
-                payment_data.get("payment_currency")
+        try:
+            normalized = CashfreeMapper.parse_webhook(
+                payload
             )
-            or CashfreeMapper._string(
-                order_data.get("order_currency")
-            )
-            or "INR"
-        )
 
-        provider_status = (
-            CashfreeMapper._string(
-                payment_data.get("payment_status")
-            )
-            or CashfreeMapper._string(
-                order_data.get("order_status")
-            )
-        )
+        except ValueError as exc:
+            raise PaymentProviderResponseError(
+                str(exc),
+                provider=self.provider_name,
+                code="invalid_webhook_payload",
+            ) from exc
 
         event_id = (
             CashfreeMapper._string(
-                payment_data.get("cf_payment_id")
+                normalized.get(
+                    "provider_payment_id"
+                )
             )
             or self._build_webhook_event_id(
                 payload=payload,
-                entity_id=provider_order_id,
-                event_type=event_type,
+                entity_id=normalized.get(
+                    "provider_order_id"
+                ),
+                event_type=normalized.get(
+                    "event_type"
+                ),
             )
         )
 
+        status = normalized.get(
+            "status"
+        )
+
+        failure_message = None
+
+        if status == "failed":
+            failure_message = (
+                CashfreeMapper._string(
+                    payment_data.get(
+                        "payment_message"
+                    )
+                )
+            )
+
         return {
             "event_id": event_id,
-            "event_type": (
-                event_type
-                or "payment.status"
-            ),
+            "event_type": normalized[
+                "event_type"
+            ],
             "entity_type": "payment",
-            "provider_order_id": (
-                CashfreeMapper._string(
-                    provider_order_id
-                )
-            ),
-            "provider_payment_id": (
-                CashfreeMapper._string(
-                    provider_payment_id
-                )
-            ),
+            "provider_order_id": normalized[
+                "provider_order_id"
+            ],
+            "provider_payment_id": normalized[
+                "provider_payment_id"
+            ],
             "provider_refund_id": None,
-            "amount": amount,
-            "currency": currency,
-            "status": (
-                CashfreeMapper.map_payment_status(
-                    provider_status
-                )
-            ),
-            "failure_code": (
-                CashfreeMapper._string(
-                    payment_data.get("payment_message")
-                )
-                if provider_status
-                and provider_status.upper()
-                in {"FAILED", "USER_DROPPED"}
-                else None
-            ),
-            "failure_message": (
-                CashfreeMapper._string(
-                    payment_data.get("payment_message")
-                )
-                if provider_status
-                and provider_status.upper()
-                in {"FAILED", "USER_DROPPED"}
-                else None
-            ),
+            "amount": normalized[
+                "amount"
+            ],
+            "currency": normalized[
+                "currency"
+            ],
+            "status": status,
+            "failure_code": failure_message,
+            "failure_message": failure_message,
             "raw_payload": payload,
         }
+
+    # =========================================================
+    # INTERNAL HELPERS
+    # =========================================================
+
+    @staticmethod
+    def _get_header(
+        headers: dict[str, str],
+        name: str,
+    ) -> str | None:
+
+        target = name.lower()
+
+        for key, value in headers.items():
+            if key.lower() == target:
+                return value
+
+        return None
 
     @staticmethod
     def _build_webhook_event_id(
@@ -621,20 +715,17 @@ class CashfreeAdapter(PaymentProvider):
         event_type: str | None,
     ) -> str:
 
-        event_time = (
-            payload.get("event_time")
-            or payload.get("timestamp")
-            or ""
-        )
-
-        source = "|".join(
-            [
-                str(event_type or ""),
-                str(entity_id or ""),
-                str(event_time),
-            ]
+        raw = json.dumps(
+            {
+                "entity_id": entity_id,
+                "event_type": event_type,
+                "payload": payload,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
         )
 
         return hashlib.sha256(
-            source.encode("utf-8")
+            raw.encode("utf-8")
         ).hexdigest()

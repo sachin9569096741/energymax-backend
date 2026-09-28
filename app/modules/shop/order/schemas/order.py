@@ -38,3 +38,42 @@ class OrderResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+from pydantic import BaseModel, Field
+
+
+class OrderStatusUpdateRequest(BaseModel):
+    status: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+    )
+
+    note: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+
+
+from datetime import datetime
+
+from datetime import datetime
+
+from pydantic import BaseModel
+
+
+class OrderTrackingEventResponse(BaseModel):
+    status: str
+    label: str
+    completed: bool
+    current: bool
+    timestamp: datetime | None = None
+    note: str | None = None
+
+
+class OrderTrackingResponse(BaseModel):
+    public_id: str
+    order_number: str
+    current_status: str
+    timeline: list[OrderTrackingEventResponse]

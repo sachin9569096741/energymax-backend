@@ -275,3 +275,129 @@ class CashfreeMapper:
             "failure_message": failure_message,
             "raw_response": response,
         }
+
+
+    @classmethod
+    def parse_webhook(
+        cls,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Normalize a Cashfree webhook payload.
+
+        Internal event types:
+
+        PAYMENT_SUCCESS_WEBHOOK
+            -> payment.succeeded
+
+        PAYMENT_FAILED_WEBHOOK
+            -> payment.failed
+
+        PAYMENT_USER_DROPPED_WEBHOOK
+            -> payment.failed
+        """
+
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "Cashfree webhook payload must be an object."
+            )
+
+        event_type = cls._string(
+            payload.get("type")
+        )
+
+        if not event_type:
+            raise ValueError(
+                "Cashfree webhook event type is missing."
+            )
+
+        data = payload.get("data")
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Cashfree webhook data is missing."
+            )
+
+        payment_data = data.get("payment")
+
+        if not isinstance(payment_data, dict):
+            raise ValueError(
+                "Cashfree webhook payment data is missing."
+            )
+
+        order_data = data.get("order")
+
+        if not isinstance(order_data, dict):
+            raise ValueError(
+                "Cashfree webhook order data is missing."
+            )
+
+        provider_payment_id = cls._string(
+            payment_data.get("cf_payment_id")
+        )
+
+        provider_order_id = cls._string(
+            order_data.get("order_id")
+        )
+
+        amount = cls._decimal(
+            payment_data.get("payment_amount")
+        )
+
+        currency = cls._string(
+            payment_data.get("payment_currency")
+        )
+
+        provider_status = cls._string(
+            payment_data.get("payment_status")
+        )
+
+        if not provider_payment_id:
+            raise ValueError(
+                "Cashfree webhook payment ID is missing."
+            )
+
+        if not provider_order_id:
+            raise ValueError(
+                "Cashfree webhook order ID is missing."
+            )
+
+        if amount is None:
+            raise ValueError(
+                "Cashfree webhook payment amount is missing."
+            )
+
+        if not currency:
+            raise ValueError(
+                "Cashfree webhook payment currency is missing."
+            )
+
+        event_map = {
+            "PAYMENT_SUCCESS_WEBHOOK": "payment.succeeded",
+            "PAYMENT_FAILED_WEBHOOK": "payment.failed",
+            "PAYMENT_USER_DROPPED_WEBHOOK": "payment.failed",
+        }
+
+        normalized_event_type = event_map.get(
+            event_type
+        )
+
+        if normalized_event_type is None:
+            raise ValueError(
+                f"Unsupported Cashfree webhook event: "
+                f"{event_type}"
+            )
+
+        return {
+        "entity_type": "payment",
+        "event_type": normalized_event_type,
+        "provider_payment_id": provider_payment_id,
+        "provider_order_id": provider_order_id,
+        "amount": amount,
+        "currency": currency,
+        "status": cls.map_payment_status(
+            provider_status
+        ),
+        "provider_status": provider_status,
+        "raw_payload": payload,
+    }

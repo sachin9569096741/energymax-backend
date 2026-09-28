@@ -59,12 +59,31 @@ def create_payment_from_order(
         db.rollback()
         raise
 
-    except Exception:
+    except PaymentProviderError as exc:
         db.rollback()
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": exc.message,
+                "provider": exc.provider,
+                "code": exc.code,
+            },
+        ) from exc
+
+    except Exception as exc:
+        db.rollback()
+
+        print(
+            "PAYMENT CREATE ERROR:",
+            type(exc).__name__,
+            str(exc),
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Failed to create payment.",
-        )
+        ) from exc
 
 
 # =========================================================
@@ -99,42 +118,47 @@ def verify_payment(
         db.rollback()
         raise
 
-    except Exception:
+    except PaymentProviderError as exc:
         db.rollback()
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": exc.message,
+                "provider": exc.provider,
+                "code": exc.code,
+            },
+        ) from exc
+
+    except Exception as exc:
+        db.rollback()
+
+        print(
+            "PAYMENT VERIFY ERROR:",
+            type(exc).__name__,
+            str(exc),
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Payment verification failed.",
-        )
+        ) from exc
 
 
 # =========================================================
-# RAZORPAY WEBHOOK
+# CASHFREE WEBHOOK
 # =========================================================
 
 @router.post(
-    "/webhooks/razorpay",
+    "/webhooks/cashfree",
     status_code=200,
 )
-async def razorpay_webhook(
+async def cashfree_webhook(
     request: Request,
-    x_razorpay_signature: str | None = Header(
-        default=None,
-        alias="X-Razorpay-Signature",
-    ),
     db: Session = Depends(get_db),
 ):
     # ---------------------------------------------------------
-    # 1. Validate signature header
-    # ---------------------------------------------------------
-
-    if not x_razorpay_signature:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing Razorpay webhook signature.",
-        )
-
-    # ---------------------------------------------------------
-    # 2. Read exact raw request body
+    # 1. Read exact raw request body
     # ---------------------------------------------------------
 
     raw_body = await request.body()
@@ -146,27 +170,55 @@ async def razorpay_webhook(
         )
 
     # ---------------------------------------------------------
-    # 3. Resolve Razorpay provider
+    # 2. Resolve Cashfree provider
     # ---------------------------------------------------------
 
     payment_router = PaymentRouter()
 
-    provider = payment_router.get_provider(
-        "razorpay"
-    )
+    try:
+        provider = payment_router.get_provider(
+            "cashfree"
+        )
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    # ---------------------------------------------------------
+    # 3. Collect Cashfree webhook headers
+    #
+    # Cashfree signature verification requires:
+    # - x-webhook-signature
+    # - x-webhook-timestamp
+    #
+    # We pass the headers directly to the provider so the
+    # provider layer remains responsible for verification.
+    # ---------------------------------------------------------
+
+    webhook_headers = {
+        key.lower(): value
+        for key, value in request.headers.items()
+        if key.lower() in {
+            "x-webhook-signature",
+            "x-webhook-timestamp",
+        }
+    }
 
     # ---------------------------------------------------------
     # 4. Verify signature BEFORE parsing JSON
     #
     # IMPORTANT:
-    # Razorpay signs the exact raw request body.
-    # Never reconstruct JSON before signature verification.
+    # Cashfree signs:
+    #
+    # timestamp + raw request body
+    #
+    # Therefore we must use the exact raw bytes.
     # ---------------------------------------------------------
 
     try:
         provider.verify_webhook(
             payload=raw_body,
-            signature=x_razorpay_signature,
+            headers=webhook_headers,
         )
 
     except PaymentProviderSignatureError as exc:
@@ -174,7 +226,15 @@ async def razorpay_webhook(
 
         raise HTTPException(
             status_code=400,
-            detail="Invalid Razorpay webhook signature.",
+            detail="Invalid Cashfree webhook signature.",
+        ) from exc
+
+    except PaymentProviderError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail=exc.message,
         ) from exc
 
     # ---------------------------------------------------------
@@ -192,31 +252,18 @@ async def razorpay_webhook(
             detail="Invalid webhook JSON payload.",
         ) from exc
 
-    # ---------------------------------------------------------
-    # 6. Validate webhook structure
-    # ---------------------------------------------------------
+    if not isinstance(payload, dict):
+        db.rollback()
 
-    event_id = payload.get("id")
-
-    event_type = payload.get("event")
-
-    if not event_id:
         raise HTTPException(
             status_code=400,
-            detail="Webhook event ID is missing.",
-        )
-
-    if not event_type:
-        raise HTTPException(
-            status_code=400,
-            detail="Webhook event type is missing.",
+            detail="Invalid webhook payload.",
         )
 
     # ---------------------------------------------------------
-    # 7. Parse / normalize Razorpay payload
+    # 6. Parse / normalize Cashfree payload
     #
-    # Do this before storing the webhook so malformed/
-    # unsupported events are rejected cleanly.
+    # Adapter -> Mapper -> provider-neutral structure
     # ---------------------------------------------------------
 
     try:
@@ -232,29 +279,63 @@ async def razorpay_webhook(
             detail=exc.message,
         ) from exc
 
+    except Exception as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Cashfree webhook payload.",
+        ) from exc
+
+    # ---------------------------------------------------------
+    # 7. Validate normalized event ID
+    # ---------------------------------------------------------
+
+    event_id = normalized.get(
+        "event_id"
+    )
+
+    event_type = normalized.get(
+        "event_type"
+    )
+
+    if not event_id:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook event ID is missing.",
+        )
+
+    if not event_type:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook event type is missing.",
+        )
+
     # ---------------------------------------------------------
     # 8. Atomically create webhook event
     #
-    # Uses:
-    #
     # UNIQUE(provider, event_id)
-    #
     # + PostgreSQL ON CONFLICT DO NOTHING
     #
-    # This protects against concurrent duplicate webhook
-    # requests.
+    # This protects against duplicate/concurrent webhooks.
     # ---------------------------------------------------------
 
     payment_repository = PaymentRepository(db)
 
     new_webhook_event = WebhookEvent(
         public_id=str(uuid4()),
-        provider="razorpay",
+        provider="cashfree",
         event_id=event_id,
         event_type=event_type,
         status="received",
         payload=payload,
-        signature=x_razorpay_signature,
+        signature=webhook_headers.get(
+            "x-webhook-signature"
+        ),
     )
 
     webhook_event = (
@@ -264,14 +345,14 @@ async def razorpay_webhook(
     )
 
     # ---------------------------------------------------------
-    # 9. Duplicate webhook
+    # 9. Handle duplicate webhook
     # ---------------------------------------------------------
 
     if webhook_event is None:
 
         existing_event = (
             payment_repository.get_webhook_event(
-                provider="razorpay",
+                provider="cashfree",
                 event_id=event_id,
             )
         )
@@ -281,9 +362,7 @@ async def razorpay_webhook(
 
             raise HTTPException(
                 status_code=500,
-                detail=(
-                    "Webhook idempotency check failed."
-                ),
+                detail="Webhook idempotency check failed.",
             )
 
         # -----------------------------------------------------
@@ -302,8 +381,7 @@ async def razorpay_webhook(
         # -----------------------------------------------------
         # Existing received/failed event
         #
-        # This allows a retry if an earlier processing attempt
-        # was persisted in a retryable state.
+        # Allow retry of processing.
         # -----------------------------------------------------
 
         webhook_event = existing_event
@@ -318,6 +396,7 @@ async def razorpay_webhook(
             webhook_event.error_message = exc.message
 
             payment_repository.save_webhook_event()
+
             db.commit()
 
             raise HTTPException(
@@ -326,13 +405,13 @@ async def razorpay_webhook(
             ) from exc
 
     # ---------------------------------------------------------
-    # 10. Process payment
+    # 10. Process Cashfree webhook
     # ---------------------------------------------------------
 
     service = PaymentService(db)
 
     try:
-        service.process_razorpay_webhook(
+        service.process_cashfree_webhook(
             webhook_event=webhook_event,
             normalized=normalized,
         )
@@ -345,6 +424,12 @@ async def razorpay_webhook(
 
     except Exception as exc:
         db.rollback()
+
+        print(
+            "CASHFREE WEBHOOK PROCESSING ERROR:",
+            type(exc).__name__,
+            str(exc),
+        )
 
         raise HTTPException(
             status_code=500,
