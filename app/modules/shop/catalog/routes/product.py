@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from app.modules.admin.auth.security.dependencies import (
     require_permission,
 )
@@ -19,52 +20,13 @@ router = APIRouter(
 )
 
 
-@router.post(
-    "",
-    response_model=ProductResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[
-        Depends(
-            require_permission(
-                permission_name="create_product"
-            )
-        )
-    ],
-)
-def create_product(
-    payload: ProductCreate,
-    db: Session = Depends(get_db),
-):
-    service = ProductService(db)
-
-    try:
-        product = service.create_product(
-            **payload.model_dump()
-        )
-
-        db.commit()
-
-        return product
-
-    except ValueError as exc:
-        db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        )
-
+# ============================================================
+# PUBLIC: List Products
+# ============================================================
 
 @router.get(
     "",
     response_model=ProductListResponse,
-    dependencies=[
-        Depends(
-            require_permission(
-                permission_name="view_products"
-            )
-        )
-    ],
 )
 def list_products(
     subcategory_id: int | None = Query(
@@ -109,16 +71,13 @@ def list_products(
         )
 
 
+# ============================================================
+# PUBLIC: Get Single Product
+# ============================================================
+
 @router.get(
     "/{public_id}",
     response_model=ProductResponse,
-    dependencies=[
-        Depends(
-            require_permission(
-                permission_name="view_products"
-            )
-        )
-    ],
 )
 def get_product(
     public_id: str,
@@ -137,6 +96,50 @@ def get_product(
             detail=str(exc),
         )
 
+
+# ============================================================
+# ADMIN ONLY: Create Product
+# ============================================================
+
+@router.post(
+    "",
+    response_model=ProductResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(
+            require_permission(
+                permission_name="create_product"
+            )
+        )
+    ],
+)
+def create_product(
+    payload: ProductCreate,
+    db: Session = Depends(get_db),
+):
+    service = ProductService(db)
+
+    try:
+        product = service.create_product(
+            **payload.model_dump()
+        )
+
+        db.commit()
+
+        return product
+
+    except ValueError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+
+# ============================================================
+# ADMIN ONLY: Update Product
+# ============================================================
 
 @router.patch(
     "/{public_id}",
@@ -178,6 +181,10 @@ def update_product(
             detail=str(exc),
         )
 
+
+# ============================================================
+# ADMIN ONLY: Delete Product
+# ============================================================
 
 @router.delete(
     "/{public_id}",

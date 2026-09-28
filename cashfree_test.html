@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>EnergyMax — Cashfree Sandbox Tester</title>
+
+  <!-- Cashfree JS SDK -->
+  <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background: #f6f7fb;
+      color: #222;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    h2 {
+      margin-top: 0;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin: 14px 0 6px;
+    }
+
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 11px;
+      border: 1px solid #ccc;
+      border-radius: 7px;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 16px;
+      padding: 11px 18px;
+      border: 0;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .primary {
+      background: #111;
+      color: #fff;
+    }
+
+    .secondary {
+      background: #e9edf3;
+      color: #111;
+      margin-left: 8px;
+    }
+
+    .danger {
+      background: #dc3545;
+      color: #fff;
+      margin-left: 8px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .status {
+      padding: 14px;
+      border-radius: 8px;
+      background: #f0f2f5;
+      margin-top: 15px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .success {
+      background: #e8f7ed;
+    }
+
+    .error {
+      background: #fdecec;
+    }
+
+    .pending {
+      background: #fff6df;
+    }
+
+    .info {
+      background: #e8f1ff;
+    }
+
+    small {
+      color: #666;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #111;
+      color: #eee;
+      padding: 14px;
+      border-radius: 8px;
+      overflow: auto;
+    }
+
+    .value-box {
+      background: #f7f7f7;
+      padding: 12px;
+      border-radius: 7px;
+      margin-top: 8px;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    @media (max-width: 700px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+
+      .secondary,
+      .danger {
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+
+
+<body>
+
+  <h1>EnergyMax — Cashfree Sandbox Tester</h1>
+
+  <p>
+    <small>
+      Development-only payment testing page.
+      Never put your Cashfree Secret Key in this file.
+    </small>
+  </p>
+
+
+  <!-- ===================================================== -->
+  <!-- 1. CREATE PAYMENT -->
+  <!-- ===================================================== -->
+
+  <div class="card">
+
+    <h2>1. Create Payment</h2>
+
+    <label>
+      Backend URL
+    </label>
+
+    <input
+      id="backendUrl"
+      value="http://127.0.0.1:8000"
+    >
+
+
+    <label>
+      Customer Session Token
+      <small>
+        Required for customer-authenticated payment APIs
+      </small>
+    </label>
+
+    <input
+      id="token"
+      type="password"
+      placeholder="Paste customer session token"
+      autocomplete="off"
+    >
+
+
+    <div class="row">
+
+      <div>
+
+        <label>
+          Order Public ID
+        </label>
+
+        <input
+          id="orderId"
+          placeholder="Order UUID"
+        >
+
+      </div>
+
+
+      <div>
+
+        <label>
+          Payment Public ID
+        </label>
+
+        <input
+          id="paymentId"
+          placeholder="Filled automatically after payment creation"
+        >
+
+      </div>
+
+    </div>
+
+
+    <button
+      id="createPaymentBtn"
+      class="primary"
+      onclick="createPayment()"
+    >
+      Create Cashfree Payment
+    </button>
+
+
+    <button
+      id="verifyPaymentBtn"
+      class="secondary"
+      onclick="verifyPayment()"
+    >
+      Verify Payment
+    </button>
+
+
+    <div
+      id="status"
+      class="status"
+    >
+      Ready.
+    </div>
+
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- 2. CASHFREE CHECKOUT -->
+  <!-- ===================================================== -->
+
+  <div class="card">
+
+    <h2>2. Cashfree Checkout</h2>
+
+    <p>
+      <small>
+        Uses the payment_session_id returned by your EnergyMax backend.
+      </small>
+    </p>
+
+
+    <label>
+      Payment Session ID
+    </label>
+
+    <input
+      id="sessionId"
+      placeholder="Cashfree payment_session_id"
+    >
+
+
+    <button
+      id="payNowBtn"
+      class="primary"
+      onclick="payNow()"
+    >
+      PAY NOW
+    </button>
+
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- 3. PAYMENT INFORMATION -->
+  <!-- ===================================================== -->
+
+  <div class="card">
+
+    <h2>3. Payment Information</h2>
+
+    <div class="row">
+
+      <div>
+
+        <label>
+          Provider
+        </label>
+
+        <div
+          id="provider"
+          class="value-box"
+        >
+          —
+        </div>
+
+      </div>
+
+
+      <div>
+
+        <label>
+          Status
+        </label>
+
+        <div
+          id="paymentStatus"
+          class="value-box"
+        >
+          —
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <label>
+      Provider Order ID
+    </label>
+
+    <div
+      id="providerOrderId"
+      class="value-box"
+    >
+      —
+    </div>
+
+
+    <label>
+      Provider Payment ID
+    </label>
+
+    <div
+      id="providerPaymentId"
+      class="value-box"
+    >
+      —
+    </div>
+
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- 4. RESULT -->
+  <!-- ===================================================== -->
+
+  <div class="card">
+
+    <h2>4. Result</h2>
+
+    <div
+      id="result"
+      class="status"
+    >
+      No verification result yet.
+    </div>
+
+
+    <h3>
+      Raw Response
+    </h3>
+
+    <pre id="raw">{}</pre>
+
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- JAVASCRIPT -->
+  <!-- ===================================================== -->
+
+  <script>
+
+
+    // =====================================================
+    // DOM HELPER
+    // =====================================================
+
+    const $ = (id) => {
+
+      return document.getElementById(id);
+
+    };
+
+
+    // =====================================================
+    // STATUS UI
+    // =====================================================
+
+    function setStatus(message, type = "") {
+
+      $("status").className =
+        "status " + type;
+
+      $("status").textContent =
+        message;
+
+    }
+
+
+    function setResult(data, type = "") {
+
+      $("result").className =
+        "status " + type;
+
+
+      $("result").textContent =
+
+        typeof data === "string"
+
+          ? data
+
+          : JSON.stringify(
+              data,
+              null,
+              2
+            );
+
+
+      $("raw").textContent =
+
+        typeof data === "string"
+
+          ? data
+
+          : JSON.stringify(
+              data,
+              null,
+              2
+            );
+
+    }
+
+
+    // =====================================================
+    // BACKEND URL
+    // =====================================================
+
+    function backendUrl() {
+
+      return $("backendUrl")
+        .value
+        .trim()
+        .replace(/\/$/, "");
+
+    }
+
+
+    // =====================================================
+    // CUSTOMER SESSION AUTHENTICATION
+    // =====================================================
+    //
+    // IMPORTANT:
+    // Your FastAPI backend expects:
+    //
+    // X-Customer-Session-Token
+    //
+    // NOT:
+    //
+    // Authorization: Bearer
+    //
+    // =====================================================
+
+    function authHeaders() {
+
+      const token =
+        $("token")
+          .value
+          .trim();
+
+
+      const headers = {
+
+        "Content-Type":
+          "application/json",
+
+        "Accept":
+          "application/json"
+
+      };
+
+
+      if (token) {
+
+        headers[
+          "X-Customer-Session-Token"
+        ] = token;
+
+      }
+
+
+      return headers;
+
+    }
+
+
+    // =====================================================
+    // CLEAR PAYMENT DATA
+    // =====================================================
+
+    function clearPaymentData() {
+
+      $("paymentId").value = "";
+
+      $("sessionId").value = "";
+
+      $("provider").textContent = "—";
+
+      $("paymentStatus").textContent = "—";
+
+      $("providerOrderId").textContent = "—";
+
+      $("providerPaymentId").textContent = "—";
+
+    }
+
+
+    // =====================================================
+    // DISPLAY PAYMENT RESPONSE
+    // =====================================================
+
+    function displayPaymentData(data) {
+
+      $("paymentId").value =
+        data.public_id || "";
+
+
+      $("sessionId").value =
+        data.payment_session_id || "";
+
+
+      $("provider").textContent =
+        data.provider || "—";
+
+
+      $("paymentStatus").textContent =
+        data.status || "—";
+
+
+      $("providerOrderId").textContent =
+        data.provider_order_id || "—";
+
+
+      $("providerPaymentId").textContent =
+        data.provider_payment_id || "—";
+
+    }
+
+
+    // =====================================================
+    // CREATE PAYMENT
+    // =====================================================
+
+    async function createPayment() {
+
+      const orderId =
+        $("orderId")
+          .value
+          .trim();
+
+
+      const token =
+        $("token")
+          .value
+          .trim();
+
+
+      // -----------------------------------------------
+      // Validate Order ID
+      // -----------------------------------------------
+
+      if (!orderId) {
+
+        setStatus(
+
+          "Enter the Order Public ID first.",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      // -----------------------------------------------
+      // Validate session token
+      // -----------------------------------------------
+
+      if (!token) {
+
+        setStatus(
+
+          "Enter the Customer Session Token first.",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      // -----------------------------------------------
+      // Clear old payment information
+      // -----------------------------------------------
+
+      clearPaymentData();
+
+
+      setStatus(
+        "Creating Cashfree payment..."
+      );
+
+
+      $("createPaymentBtn")
+        .disabled = true;
+
+
+      try {
+
+        const response =
+          await fetch(
+
+            `${backendUrl()}/api/v1/shop/payments/from-order/${encodeURIComponent(orderId)}`,
+
+            {
+
+              method: "POST",
+
+              headers:
+                authHeaders()
+
+            }
+
+          );
+
+
+        let data;
+
+        try {
+
+          data =
+            await response.json();
+
+        }
+
+        catch {
+
+          data = {
+
+            detail:
+              "Backend returned an invalid JSON response."
+
+          };
+
+        }
+
+
+        // -----------------------------------------------
+        // Handle HTTP errors
+        // -----------------------------------------------
+
+        if (!response.ok) {
+
+          throw new Error(
+
+            JSON.stringify(
+              data,
+              null,
+              2
+            )
+
+          );
+
+        }
+
+
+        // -----------------------------------------------
+        // Display payment information
+        // -----------------------------------------------
+
+        displayPaymentData(data);
+
+
+        // -----------------------------------------------
+        // Payment creation successful
+        // -----------------------------------------------
+
+        if (
+          data.payment_session_id
+        ) {
+
+          setStatus(
+
+            `Payment created successfully.
+
+Status:
+${data.status}
+
+Provider:
+${data.provider}
+
+Provider Order ID:
+${data.provider_order_id || "—"}
+
+Payment Session ID:
+RECEIVED`,
+
+            "success"
+
+          );
+
+        }
+
+        else {
+
+          setStatus(
+
+            `Payment created, but Payment Session ID is missing.
+
+Status:
+${data.status}
+
+Provider Order ID:
+${data.provider_order_id || "—"}`,
+
+            "error"
+
+          );
+
+        }
+
+
+        setResult(
+
+          data,
+
+          data.payment_session_id
+            ? "success"
+            : "error"
+
+        );
+
+      }
+
+
+      catch (err) {
+
+        setStatus(
+
+          "Create payment failed:\n\n" +
+          err.message,
+
+          "error"
+
+        );
+
+
+        setResult(
+
+          err.message,
+
+          "error"
+
+        );
+
+      }
+
+
+      finally {
+
+        $("createPaymentBtn")
+          .disabled = false;
+
+      }
+
+    }
+
+
+    // =====================================================
+    // CASHFREE CHECKOUT
+    // =====================================================
+
+    async function payNow() {
+
+      const sessionId =
+        $("sessionId")
+          .value
+          .trim();
+
+
+      if (!sessionId) {
+
+        setStatus(
+
+          "Create a payment first so payment_session_id is available.",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        // -----------------------------------------------
+        // Initialize Cashfree Sandbox
+        // -----------------------------------------------
+
+        const cashfree =
+          Cashfree({
+
+            mode: "sandbox"
+
+          });
+
+
+        setStatus(
+
+          "Opening Cashfree Sandbox Checkout..."
+
+        );
+
+
+        $("payNowBtn")
+          .disabled = true;
+
+
+        // -----------------------------------------------
+        // Open Cashfree Checkout
+        // -----------------------------------------------
+
+        await cashfree.checkout({
+
+          paymentSessionId:
+            sessionId,
+
+          redirectTarget:
+            "_self"
+
+        });
+
+      }
+
+
+      catch (err) {
+
+        setStatus(
+
+          "Cashfree checkout error:\n\n" +
+          (
+            err.message ||
+            String(err)
+          ),
+
+          "error"
+
+        );
+
+
+        setResult(
+
+          String(err),
+
+          "error"
+
+        );
+
+
+        $("payNowBtn")
+          .disabled = false;
+
+      }
+
+    }
+
+
+    // =====================================================
+    // VERIFY PAYMENT
+    // =====================================================
+
+    async function verifyPayment() {
+
+      const paymentId =
+        $("paymentId")
+          .value
+          .trim();
+
+
+      const token =
+        $("token")
+          .value
+          .trim();
+
+
+      // -----------------------------------------------
+      // Validate payment ID
+      // -----------------------------------------------
+
+      if (!paymentId) {
+
+        setStatus(
+
+          "Payment Public ID is missing. Create the payment first.",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      // -----------------------------------------------
+      // Validate customer session
+      // -----------------------------------------------
+
+      if (!token) {
+
+        setStatus(
+
+          "Customer Session Token is required.",
+
+          "error"
+
+        );
+
+        return;
+
+      }
+
+
+      setStatus(
+
+        "Verifying payment with EnergyMax backend..."
+
+      );
+
+
+      $("verifyPaymentBtn")
+        .disabled = true;
+
+
+      try {
+
+        const response =
+          await fetch(
+
+            `${backendUrl()}/api/v1/shop/payments/${encodeURIComponent(paymentId)}/verify`,
+
+            {
+
+              method: "POST",
+
+              headers:
+                authHeaders(),
+
+              body:
+                JSON.stringify({
+
+                  provider_payment_id:
+                    ""
+
+                })
+
+            }
+
+          );
+
+
+        let data;
+
+        try {
+
+          data =
+            await response.json();
+
+        }
+
+        catch {
+
+          data = {
+
+            detail:
+              "Backend returned an invalid JSON response."
+
+          };
+
+        }
+
+
+        // -----------------------------------------------
+        // API error
+        // -----------------------------------------------
+
+        if (!response.ok) {
+
+          setStatus(
+
+            "Verification failed:\n\n" +
+            JSON.stringify(
+              data,
+              null,
+              2
+            ),
+
+            "error"
+
+          );
+
+
+          setResult(
+
+            data,
+
+            "error"
+
+          );
+
+
+          return;
+
+        }
+
+
+        // -----------------------------------------------
+        // Display payment data
+        // -----------------------------------------------
+
+        displayPaymentData(data);
+
+
+        // -----------------------------------------------
+        // Determine payment status
+        // -----------------------------------------------
+
+        const paymentStatus =
+          String(
+            data.status || ""
+          ).toLowerCase();
+
+
+        const success =
+          paymentStatus === "succeeded";
+
+
+        const failed =
+          paymentStatus === "failed";
+
+
+        const pending =
+          paymentStatus === "pending";
+
+
+        // -----------------------------------------------
+        // Success
+        // -----------------------------------------------
+
+        if (success) {
+
+          setStatus(
+
+            `✅ PAYMENT SUCCESSFUL
+
+Provider Payment ID:
+${data.provider_payment_id || "MISSING"}
+
+Provider Order ID:
+${data.provider_order_id || "MISSING"}
+
+Status:
+${data.status}`,
+
+            "success"
+
+          );
+
+        }
+
+
+        // -----------------------------------------------
+        // Failed
+        // -----------------------------------------------
+
+        else if (failed) {
+
+          setStatus(
+
+            `❌ PAYMENT FAILED
+
+Provider Payment ID:
+${data.provider_payment_id || "MISSING"}
+
+Status:
+${data.status}`,
+
+            "error"
+
+          );
+
+        }
+
+
+        // -----------------------------------------------
+        // Pending
+        // -----------------------------------------------
+
+        else if (pending) {
+
+          setStatus(
+
+            `⏳ PAYMENT PENDING
+
+Cashfree has not reported a successful payment yet.
+
+Provider Payment ID:
+${data.provider_payment_id || "Not available"}
+
+Status:
+${data.status}`,
+
+            "pending"
+
+          );
+
+        }
+
+
+        // -----------------------------------------------
+        // Other status
+        // -----------------------------------------------
+
+        else {
+
+          setStatus(
+
+            `Payment status:
+
+${data.status || "unknown"}
+
+Provider Payment ID:
+${data.provider_payment_id || "Not available"}`,
+
+            "info"
+
+          );
+
+        }
+
+
+        setResult(
+
+          data,
+
+          success
+            ? "success"
+            : failed
+              ? "error"
+              : "pending"
+
+        );
+
+      }
+
+
+      catch (err) {
+
+        setStatus(
+
+          "Verify request failed:\n\n" +
+          err.message,
+
+          "error"
+
+        );
+
+
+        setResult(
+
+          err.message,
+
+          "error"
+
+        );
+
+      }
+
+
+      finally {
+
+        $("verifyPaymentBtn")
+          .disabled = false;
+
+      }
+
+    }
+
+
+    // =====================================================
+    // CASHFREE RETURN URL SUPPORT
+    // =====================================================
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+
+    const returnedOrderId =
+      params.get("order_id");
+
+
+    if (returnedOrderId) {
+
+      setStatus(
+
+        "Returned from Cashfree.\n\n" +
+
+        "Cashfree Order ID:\n" +
+        returnedOrderId +
+
+        "\n\n" +
+
+        "Click VERIFY PAYMENT so EnergyMax queries Cashfree for the final payment status."
+
+      );
+
+    }
+
+  </script>
+
+</body>
+
+</html>
