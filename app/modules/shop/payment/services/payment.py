@@ -261,10 +261,15 @@ class PaymentService:
 
             raise HTTPException(
                 status_code=502,
-                detail=(
-                    "Payment provider could not create "
-                    "the payment order."
-                ),
+                detail={
+                    "message": (
+                        "Payment provider could not create "
+                        "the payment order."
+                    ),
+                    "provider": provider.provider_name,
+                    "error_code": exc.code,
+                    "provider_error": exc.message,
+                },
             ) from exc
 
         # -----------------------------------------------------
