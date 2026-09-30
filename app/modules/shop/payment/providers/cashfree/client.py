@@ -172,6 +172,14 @@ class CashfreeClient:
         if order_tags:
             payload["order_tags"] = order_tags
 
+        print("========== CASHFREE REQUEST ==========")
+        print("BASE URL:", self.base_url)
+        print("APP ID PREFIX:", self.app_id[:8] if self.app_id else "MISSING")
+        print("APP ID LENGTH:", len(self.app_id) if self.app_id else 0)
+        print("SECRET PREFIX:", self.secret_key[:12] if self.secret_key else "MISSING")
+        print("SECRET LENGTH:", len(self.secret_key) if self.secret_key else 0)
+        print("API VERSION:", self.api_version)
+        print("======================================")
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 response = client.post(
