@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     cashfree_secret_key: str
     cashfree_environment: str = "sandbox"
     cashfree_api_version: str = "2025-01-01"
+    cashfree_webhook_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

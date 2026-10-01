@@ -116,6 +116,7 @@ class CashfreeAdapter(PaymentProvider):
             order_note=(
                 metadata.get("order_number")
             ),
+            notify_url=settings.cashfree_webhook_url or None,
             idempotency_key=payment_id,
         )
 
