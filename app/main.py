@@ -15,6 +15,9 @@ from app.modules.admin.auth.routes.permissions import (
     roles_router as admin_roles_router,
     user_permissions_router as admin_user_permissions_router,
 )
+from app.modules.shop.customer.notifications.routes.notification import (
+    router as customer_notifications_router,
+)
 from app.modules.shop.catalog.routes.subcategory import (
     router as subcategory_router,
 )
@@ -50,6 +53,9 @@ from app.modules.shop.payment.routes.refund import router as refund_router
 
 from app.modules.admin.order.routes import (
     order_router as admin_order_router,
+)
+from app.modules.admin.notifications.routes.notification import (
+    router as admin_notifications_router,
 )
 
 app = FastAPI(
@@ -106,6 +112,10 @@ app.include_router(
     admin_order_router,
     prefix="/api/v1",
 )
+app.include_router(
+    admin_notifications_router,
+    prefix="/api/v1",
+)
 
 # ---------------------------------------------------------
 # Shop - Catalog
@@ -135,6 +145,10 @@ app.include_router(
 # ---------------------------------------------------------
 # Shop - Cart
 # ---------------------------------------------------------
+app.include_router(
+    customer_notifications_router,
+    prefix="/api/v1",
+)
 
 app.include_router(
     guest_cart_router,

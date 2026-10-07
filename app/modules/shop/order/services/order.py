@@ -7,6 +7,13 @@ from app.modules.shop.order.constants.status import (
     ORDER_STATUSES,
     ORDER_STATUS_TRANSITIONS,
 )
+from sqlalchemy import select
+
+from app.modules.admin.auth.models.admin_user import AdminUser
+from app.modules.admin.notifications.services.notification import (
+    NotificationService,
+)
+
 from app.modules.shop.order.models.order_status_history import (
     OrderStatusHistory,
 )
@@ -154,6 +161,28 @@ class OrderService:
         self.db.add(initial_status)
 
         self.order_repository.save()
+
+        notification_service = NotificationService(self.db)
+        active_admins = self.db.scalars(
+            select(AdminUser).where(
+                AdminUser.is_active.is_(True)
+            )
+        ).all()
+
+        for admin in active_admins:
+            notification_service.notify_order_created(
+                admin_user_id=admin.id,
+
+                order_public_id=order.public_id,
+                order_number=order.order_number,
+                customer_name=customer_name,
+                amount=str(order.total_amount),
+
+
+
+            )
+        self.order_repository.save()
+
 
         return order
 

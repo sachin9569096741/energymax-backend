@@ -1,7 +1,11 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
-
+from app.modules.admin.notifications.services.notification import (
+    NotificationService,
+)
+from sqlalchemy import select
+from app.modules.admin.auth.models.admin_user import AdminUser
 from fastapi import HTTPException
 
 from app.modules.shop.order.repositories.order import OrderRepository
@@ -632,6 +636,24 @@ class PaymentService:
 
                 OrderService(self.db).mark_order_paid(
                     order
+                )
+        if not already_succeeded:
+            notification_service = NotificationService(self.db)
+
+            active_admins = self.db.scalars(
+                select(AdminUser).where(
+                    AdminUser.is_active == True
+                )
+            ).all()
+
+            for admin in active_admins:
+                notification_service.notify_payment_success(
+                    admin_user_id=admin.id,
+                    order_public_id=order.public_id,
+                    payment_public_id=payment.public_id,
+                    order_number=order.order_number,
+                    amount=str(payment.amount),
+
                 )
 
         # =====================================================

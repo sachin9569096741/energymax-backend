@@ -30,6 +30,12 @@ from app.modules.shop.payment.models.payment_attempt import PaymentAttempt
 from app.modules.shop.payment.models.payment_event import PaymentEvent
 from app.modules.shop.payment.models.webhook_event import WebhookEvent
 from app.modules.shop.order.models.order_status_history import OrderStatusHistory
+from app.modules.admin.notifications.models.admin_notification import (
+    AdminNotification,
+)
+from app.modules.shop.customer.notifications.models.customer_notification import (
+    CustomerNotification,
+)
 __all__ = [
     "Category",
     "Subcategory",
@@ -56,5 +62,7 @@ __all__ = [
     "PaymentAttempt",
     "PaymentEvent",
     "WebhookEvent",
-    "OrderStatusHistory"
+    "OrderStatusHistory",
+    "AdminNotification",
+    "CustomerNotification",
 ]
