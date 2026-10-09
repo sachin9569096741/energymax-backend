@@ -20,6 +20,7 @@ class GuestCartItem(Base):
         UniqueConstraint(
             "cart_id",
             "product_id",
+            "variant_id",
             name="uq_guest_cart_product",
         ),
     )
@@ -90,6 +91,15 @@ class GuestCartItem(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    variant_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "product_variants.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
+
     # ---------------------------------------------------------------
     # Relationships
     # ---------------------------------------------------------------
@@ -102,3 +112,4 @@ class GuestCartItem(Base):
     product = relationship(
         "Product",
     )
+    variant = relationship("ProductVariant")

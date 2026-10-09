@@ -48,6 +48,12 @@ class OrderItem(Base):
         index=True,
     )
 
+    variant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_variants.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=False,
+    )
+
     product_name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -80,3 +86,6 @@ class OrderItem(Base):
     )
 
     product = relationship("Product")
+    variant = relationship(
+        "ProductVariant",
+    )

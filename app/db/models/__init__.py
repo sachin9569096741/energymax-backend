@@ -36,11 +36,29 @@ from app.modules.admin.notifications.models.admin_notification import (
 from app.modules.shop.customer.notifications.models.customer_notification import (
     CustomerNotification,
 )
+from app.modules.shop.catalog.models.product_variant import ProductVariant
+from app.modules.shop.inventory.models.warehouse import Warehouse
+from app.modules.shop.inventory.models.inventory_balance import (
+    InventoryBalance,
+)
+from app.modules.shop.inventory.models.inventory_movement import (
+    InventoryMovement,
+)
+from app.modules.shop.inventory.models.inventory_reservation import (
+    InventoryReservation,
+)
+from app.modules.shop.inventory.models.stock_adjustment import (
+    StockAdjustment,
+)
+
+
 __all__ = [
     "Category",
     "Subcategory",
     "Product",
     "ProductImage",
+    "ProductVariant",
+    "Warehouse",
     "AdminUser",
     "Permission",
     "Role",
@@ -65,4 +83,8 @@ __all__ = [
     "OrderStatusHistory",
     "AdminNotification",
     "CustomerNotification",
+    "InventoryBalance",
+    "InventoryMovement",
+    "InventoryReservation",
+    "StockAdjustment"
 ]

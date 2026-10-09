@@ -1,3 +1,7 @@
+from decimal import Decimal
+
+from fastapi import HTTPException
+
 from app.modules.shop.cart.models.guest_cart import GuestCart
 from app.modules.shop.cart.schemas.guest_cart import (
     GuestCartItemResponse,
@@ -10,17 +14,46 @@ def build_guest_cart_response(
     guest_cart_token: str | None = None,
 ) -> GuestCartResponse:
     items = []
+
     total_items = 0
-    total_amount = 0
+    total_amount = Decimal("0")
 
     for item in cart.items:
-        unit_price = item.product.price
-        subtotal = unit_price * item.quantity
+
+        # -----------------------------------------------------------
+        # Variant is now mandatory for cart pricing
+        # -----------------------------------------------------------
+
+        if item.variant is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cart contains an item without a product variant. "
+                    "Please remove the item and add it again."
+                ),
+            )
+
+        # -----------------------------------------------------------
+        # Variant price is the actual selling price
+        # -----------------------------------------------------------
+
+        unit_price = Decimal(
+            str(item.variant.price)
+        )
+
+        subtotal = (
+            unit_price * item.quantity
+        )
+
+        # -----------------------------------------------------------
+        # Build item response
+        # -----------------------------------------------------------
 
         items.append(
             GuestCartItemResponse(
                 public_id=item.public_id,
                 product_public_id=item.product.public_id,
+                variant_public_id=item.variant.public_id,
                 product_name=item.product.name,
                 quantity=item.quantity,
                 unit_price=unit_price,
@@ -30,6 +63,10 @@ def build_guest_cart_response(
 
         total_items += item.quantity
         total_amount += subtotal
+
+    # ---------------------------------------------------------------
+    # Build cart response
+    # ---------------------------------------------------------------
 
     return GuestCartResponse(
         public_id=cart.public_id,

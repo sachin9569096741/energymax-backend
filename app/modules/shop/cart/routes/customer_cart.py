@@ -1,7 +1,6 @@
 from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi import APIRouter, Depends
-from app.modules.shop.cart.services.guest_cart import GuestCartService
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -10,18 +9,20 @@ from app.modules.shop.cart.repositories.customer_cart import (
 )
 from app.modules.shop.cart.schemas.customer_cart import (
     CustomerCartItemAddRequest,
-    CustomerCartItemUpdateRequest,
     CustomerCartItemResponse,
+    CustomerCartItemUpdateRequest,
     CustomerCartResponse,
 )
 from app.modules.shop.cart.services.customer_cart import (
     CustomerCartService,
 )
-from app.modules.shop.catalog.models.product import Product
+from app.modules.shop.cart.services.guest_cart import (
+    GuestCartService,
+)
+from app.modules.shop.customer.models.customer import Customer
 from app.modules.shop.customer.security.dependencies import (
     get_current_customer,
 )
-from app.modules.shop.customer.models.customer import Customer
 
 
 router = APIRouter(
@@ -30,22 +31,48 @@ router = APIRouter(
 )
 
 
-def _build_cart_response(cart):
+# ===============================================================
+# RESPONSE BUILDER
+# ===============================================================
+
+def _build_cart_response(
+    cart,
+) -> CustomerCartResponse:
     items = []
 
     subtotal = Decimal("0")
     total_items = 0
 
     for item in cart.items:
-        unit_price = Decimal(str(item.product.price))
+        # -------------------------------------------------------
+        # Variant is now the source of pricing
+        # -------------------------------------------------------
 
-        subtotal += unit_price * item.quantity
+        if item.variant is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cart contains an item without a product variant. "
+                    "Please remove and add the item again."
+                ),
+            )
+
+        unit_price = Decimal(
+            str(item.variant.price)
+        )
+
+        item_subtotal = (
+            unit_price * item.quantity
+        )
+
+        subtotal += item_subtotal
         total_items += item.quantity
 
         items.append(
             CustomerCartItemResponse(
                 public_id=item.public_id,
                 product_public_id=item.product.public_id,
+                variant_public_id=item.variant.public_id,
                 quantity=item.quantity,
                 unit_price=unit_price,
             )
@@ -61,23 +88,35 @@ def _build_cart_response(cart):
     )
 
 
+# ===============================================================
+# GET CUSTOMER CART
+# ===============================================================
+
 @router.get(
     "",
     response_model=CustomerCartResponse,
 )
 def get_customer_cart(
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     repository = CustomerCartRepository(db)
     service = CustomerCartService(repository)
 
-    cart = service.get_cart(current_customer.id)
+    cart = service.get_cart(
+        current_customer.id,
+    )
 
     db.commit()
 
     return _build_cart_response(cart)
 
+
+# ===============================================================
+# ADD CUSTOMER CART ITEM
+# ===============================================================
 
 @router.post(
     "/items",
@@ -85,27 +124,50 @@ def get_customer_cart(
 )
 def add_customer_cart_item(
     data: CustomerCartItemAddRequest,
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     repository = CustomerCartRepository(db)
     service = CustomerCartService(repository)
 
-    product = db.query(Product).filter(
-        Product.public_id == data.product_public_id
-    ).first()
+    # -----------------------------------------------------------
+    # Resolve product
+    # -----------------------------------------------------------
+
+    product = repository.get_product_by_public_id(
+        data.product_public_id
+    )
 
     if product is None:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=404,
             detail="Product not found.",
         )
 
+    # -----------------------------------------------------------
+    # Resolve variant
+    # -----------------------------------------------------------
+
+    variant = repository.get_variant_by_public_id(
+        data.variant_public_id
+    )
+
+    if variant is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product variant not found.",
+        )
+
+    # -----------------------------------------------------------
+    # Add variant to cart
+    # -----------------------------------------------------------
+
     cart = service.add_item(
         customer_id=current_customer.id,
         product=product,
+        variant=variant,
         quantity=data.quantity,
     )
 
@@ -114,6 +176,10 @@ def add_customer_cart_item(
     return _build_cart_response(cart)
 
 
+# ===============================================================
+# UPDATE ITEM QUANTITY
+# ===============================================================
+
 @router.patch(
     "/items/{item_public_id}",
     response_model=CustomerCartResponse,
@@ -121,7 +187,9 @@ def add_customer_cart_item(
 def update_customer_cart_item(
     item_public_id: str,
     data: CustomerCartItemUpdateRequest,
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     repository = CustomerCartRepository(db)
@@ -138,13 +206,19 @@ def update_customer_cart_item(
     return _build_cart_response(cart)
 
 
+# ===============================================================
+# REMOVE ITEM
+# ===============================================================
+
 @router.delete(
     "/items/{item_public_id}",
     response_model=CustomerCartResponse,
 )
 def remove_customer_cart_item(
     item_public_id: str,
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     repository = CustomerCartRepository(db)
@@ -160,17 +234,25 @@ def remove_customer_cart_item(
     return _build_cart_response(cart)
 
 
+# ===============================================================
+# CLEAR CART
+# ===============================================================
+
 @router.delete(
     "",
 )
 def clear_customer_cart(
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     repository = CustomerCartRepository(db)
     service = CustomerCartService(repository)
 
-    service.clear_cart(current_customer.id)
+    service.clear_cart(
+        current_customer.id,
+    )
 
     db.commit()
 
@@ -192,7 +274,9 @@ def merge_guest_cart(
         default=None,
         alias="X-Guest-Cart-Token",
     ),
-    current_customer=Depends(get_current_customer),
+    current_customer: Customer = Depends(
+        get_current_customer
+    ),
     db: Session = Depends(get_db),
 ):
     if not x_guest_cart_token:
@@ -204,46 +288,55 @@ def merge_guest_cart(
     guest_cart_service = GuestCartService(db)
 
     try:
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
         # Get and validate guest cart
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
 
         guest_cart = guest_cart_service.get_cart(
             x_guest_cart_token,
         )
 
-        # -----------------------------------------------------------
-        # Merge guest cart into customer cart
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
+        # Merge guest cart
+        # -------------------------------------------------------
 
-        customer_cart_repository = CustomerCartRepository(db)
+        customer_cart_repository = CustomerCartRepository(
+            db
+        )
 
         customer_cart_service = CustomerCartService(
-            customer_cart_repository,
+            customer_cart_repository
         )
 
-        customer_cart = customer_cart_service.merge_guest_cart(
-            customer_id=current_customer.id,
-            guest_cart=guest_cart,
+        customer_cart = (
+            customer_cart_service.merge_guest_cart(
+                customer_id=current_customer.id,
+                guest_cart=guest_cart,
+            )
         )
 
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
         # Consume guest cart
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
 
         guest_cart_service.consume_cart(
             guest_cart,
         )
 
-        # -----------------------------------------------------------
-        # Commit everything together
-        # -----------------------------------------------------------
+        # -------------------------------------------------------
+        # Commit merge + guest cart deletion together
+        # -------------------------------------------------------
 
         db.commit()
 
-        # Refresh merged cart with product relationships
-        customer_cart = customer_cart_service.get_cart(
-            current_customer.id,
+        # -------------------------------------------------------
+        # Reload customer cart
+        # -------------------------------------------------------
+
+        customer_cart = (
+            customer_cart_service.get_cart(
+                current_customer.id,
+            )
         )
 
         return _build_cart_response(

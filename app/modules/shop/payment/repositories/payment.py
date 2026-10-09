@@ -120,6 +120,24 @@ class PaymentRepository:
 
         return self.db.scalar(statement)
 
+
+    
+    def get_attempt_by_provider_order_id(
+        self,
+        payment_id: int,
+        provider_order_id: str,
+    ) -> PaymentAttempt | None:
+        statement = (
+            select(PaymentAttempt)
+            .where(
+                PaymentAttempt.payment_id == payment_id,
+                PaymentAttempt.provider_order_id == provider_order_id,
+            )
+            .limit(1)
+        )
+
+        return self.db.scalar(statement)
+
     # =========================================================
     # PAYMENT EVENT
     # =========================================================

@@ -3,14 +3,13 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.modules.shop.cart.models.customer_cart import CustomerCart
-from app.modules.shop.customer.security.dependencies import get_current_customer
 from app.modules.shop.cart.models.customer_cart_item import CustomerCartItem
 from app.modules.shop.cart.models.guest_cart import GuestCart
-from app.modules.shop.cart.services.guest_cart import GuestCartService
+from app.modules.shop.catalog.models.product import Product
+from app.modules.shop.catalog.models.product_variant import ProductVariant
 from app.modules.shop.cart.repositories.customer_cart import (
     CustomerCartRepository,
 )
-from app.modules.shop.catalog.models.product import Product
 
 
 MAX_ITEM_QUANTITY = 100
@@ -55,8 +54,13 @@ class CustomerCartService:
         self,
         customer_id: int,
         product: Product,
+        variant: ProductVariant,
         quantity: int,
     ) -> CustomerCart:
+
+        # -----------------------------------------------------------
+        # Quantity validation
+        # -----------------------------------------------------------
 
         if quantity <= 0:
             raise HTTPException(
@@ -70,17 +74,51 @@ class CustomerCartService:
                 detail=f"Maximum quantity is {MAX_ITEM_QUANTITY}.",
             )
 
+        # -----------------------------------------------------------
+        # Product validation
+        # -----------------------------------------------------------
+
+        if not product.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail="This product is not available.",
+            )
+
+        # -----------------------------------------------------------
+        # Variant validation
+        # -----------------------------------------------------------
+
+        if not variant.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail="This product variant is not available.",
+            )
+
+        if variant.product_id != product.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected variant does not belong to this product.",
+            )
+
+        # -----------------------------------------------------------
+        # Get customer cart
+        # -----------------------------------------------------------
+
         cart = self.get_or_create_cart(
             customer_id,
         )
 
-        item = self.repository.get_item_by_product_id(
+        # -----------------------------------------------------------
+        # Find existing item by VARIANT
+        # -----------------------------------------------------------
+
+        item = self.repository.get_item_by_variant_id(
             cart_id=cart.id,
-            product_id=product.id,
+            variant_id=variant.id,
         )
 
         # -----------------------------------------------------------
-        # Product does not exist in cart
+        # Variant does not exist in cart
         # -----------------------------------------------------------
 
         if item is None:
@@ -88,6 +126,7 @@ class CustomerCartService:
                 public_id=str(uuid4()),
                 cart_id=cart.id,
                 product_id=product.id,
+                variant_id=variant.id,
                 quantity=quantity,
             )
 
@@ -96,11 +135,13 @@ class CustomerCartService:
             )
 
         # -----------------------------------------------------------
-        # Product already exists
+        # Variant already exists
         # -----------------------------------------------------------
 
         else:
-            new_quantity = item.quantity + quantity
+            new_quantity = (
+                item.quantity + quantity
+            )
 
             if new_quantity > MAX_ITEM_QUANTITY:
                 raise HTTPException(
@@ -217,8 +258,7 @@ class CustomerCartService:
 
         self.repository.save()
 
-
-        # ===============================================================
+    # ===============================================================
     # MERGE GUEST CART
     # ===============================================================
 
@@ -231,10 +271,19 @@ class CustomerCartService:
         Merge all items from a guest cart into the
         authenticated customer's cart.
 
-        If a product already exists in the customer cart,
-        quantities are added together.
+        Items are merged by variant, not by product.
 
-        Maximum quantity per product is 100.
+        This allows the same product to have multiple
+        variants in the customer's cart.
+
+        Example:
+
+            Product: Energy Drink
+
+            Orange variant -> quantity 2
+            Mango variant  -> quantity 3
+
+        Both variants can exist independently.
         """
 
         customer_cart = self.get_or_create_cart(
@@ -242,13 +291,31 @@ class CustomerCartService:
         )
 
         for guest_item in guest_cart.items:
-            customer_item = self.repository.get_item_by_product_id(
+
+            # -------------------------------------------------------
+            # Legacy cart protection
+            # -------------------------------------------------------
+
+            if guest_item.variant_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Guest cart contains an item without a "
+                        "product variant. Please add the product again."
+                    ),
+                )
+
+            # -------------------------------------------------------
+            # Find customer item by VARIANT
+            # -------------------------------------------------------
+
+            customer_item = self.repository.get_item_by_variant_id(
                 cart_id=customer_cart.id,
-                product_id=guest_item.product_id,
+                variant_id=guest_item.variant_id,
             )
 
             # -------------------------------------------------------
-            # Product doesn't exist in customer cart
+            # Variant doesn't exist in customer cart
             # -------------------------------------------------------
 
             if customer_item is None:
@@ -261,6 +328,7 @@ class CustomerCartService:
                     public_id=str(uuid4()),
                     cart_id=customer_cart.id,
                     product_id=guest_item.product_id,
+                    variant_id=guest_item.variant_id,
                     quantity=quantity,
                 )
 
@@ -269,7 +337,7 @@ class CustomerCartService:
                 )
 
             # -------------------------------------------------------
-            # Product already exists
+            # Variant already exists
             # -------------------------------------------------------
 
             else:

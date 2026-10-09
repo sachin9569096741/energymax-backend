@@ -20,6 +20,7 @@ class CustomerCartItem(Base):
         UniqueConstraint(
             "cart_id",
             "product_id",
+            "variant_id",
             name="uq_customer_cart_product",
         ),
     )
@@ -63,6 +64,14 @@ class CustomerCartItem(Base):
         nullable=False,
         index=True,
     )
+    variant_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "product_variants.id",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+        index=True,
+    )
 
     # ---------------------------------------------------------------
     # Cart data
@@ -102,3 +111,5 @@ class CustomerCartItem(Base):
     product = relationship(
         "Product",
     )
+
+    variant = relationship("ProductVariant")

@@ -20,6 +20,7 @@ router = APIRouter(
 )
 
 
+
 @router.post(
     "/from-checkout/{checkout_public_id}",
     response_model=OrderResponse,
@@ -32,15 +33,21 @@ def create_order_from_checkout(
 ):
     service = OrderService(db)
 
-    order = service.create_order(
-        checkout_public_id=checkout_public_id,
-        customer=current_customer,
-    )
+    try:
+        order = service.create_order(
+            checkout_public_id=checkout_public_id,
+            customer=current_customer,
+        )
 
-    db.commit()
-    db.refresh(order)
+        db.commit()
+        db.refresh(order)
 
-    return order
+        return order
+
+    except Exception:
+        db.rollback()
+        raise
+
 
 @router.get(
     "/{order_public_id}/tracking",

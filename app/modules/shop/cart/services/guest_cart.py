@@ -92,9 +92,14 @@ class GuestCartService:
         self,
         token: str,
         product_public_id: str,
+        variant_public_id: str,
         quantity: int,
     ) -> GuestCart:
         cart = self.get_cart(token)
+
+        # -----------------------------------------------------------
+        # Quantity validation
+        # -----------------------------------------------------------
 
         if quantity <= 0:
             raise ValueError(
@@ -105,6 +110,10 @@ class GuestCartService:
             raise ValueError(
                 f"Maximum quantity is {MAX_ITEM_QUANTITY}."
             )
+
+        # -----------------------------------------------------------
+        # Product validation
+        # -----------------------------------------------------------
 
         product = self.repository.get_product_by_public_id(
             product_public_id
@@ -120,14 +129,45 @@ class GuestCartService:
                 "This product is not available."
             )
 
-        existing_item = next(
-            (
-                item
-                for item in cart.items
-                if item.product_id == product.id
-            ),
-            None,
+        # -----------------------------------------------------------
+        # Variant validation
+        # -----------------------------------------------------------
+
+        variant = self.repository.get_variant_by_public_id(
+            variant_public_id
         )
+
+        if variant is None:
+            raise ValueError(
+                "Product variant not found."
+            )
+
+        if not variant.is_active:
+            raise ValueError(
+                "This product variant is not available."
+            )
+
+        # -----------------------------------------------------------
+        # Ensure variant belongs to selected product
+        # -----------------------------------------------------------
+
+        if variant.product_id != product.id:
+            raise ValueError(
+                "Selected variant does not belong to this product."
+            )
+
+        # -----------------------------------------------------------
+        # Find existing item by VARIANT
+        # -----------------------------------------------------------
+
+        existing_item = self.repository.get_item_by_variant_id(
+            cart.id,
+            variant.id,
+        )
+
+        # -----------------------------------------------------------
+        # Update existing variant
+        # -----------------------------------------------------------
 
         if existing_item is not None:
             new_quantity = (
@@ -141,10 +181,15 @@ class GuestCartService:
 
             existing_item.quantity = new_quantity
 
+        # -----------------------------------------------------------
+        # Add new variant
+        # -----------------------------------------------------------
+
         else:
             item = GuestCartItem(
                 cart_id=cart.id,
                 product_id=product.id,
+                variant_id=variant.id,
                 quantity=quantity,
             )
 

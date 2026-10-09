@@ -11,6 +11,7 @@ class CheckoutAddressRequest(BaseModel):
 class CheckoutItemResponse(BaseModel):
     public_id: str
     product_id: int
+    variant_id: int | None = None
     product_name: str
     unit_price: Decimal
     quantity: int

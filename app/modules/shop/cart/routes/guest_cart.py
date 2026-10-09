@@ -1,6 +1,12 @@
-from fastapi import APIRouter, Header, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
 from app.db.session import get_db
 from app.modules.shop.cart.schemas.guest_cart import (
@@ -22,6 +28,10 @@ router = APIRouter(
 )
 
 
+# ===============================================================
+# GET GUEST CART
+# ===============================================================
+
 @router.get(
     "",
     response_model=GuestCartResponse,
@@ -35,7 +45,10 @@ def get_cart(
 ):
     service = GuestCartService(db)
 
-    # No token → create a new guest cart.
+    # -----------------------------------------------------------
+    # No token → create new guest cart
+    # -----------------------------------------------------------
+
     if not x_guest_cart_token:
         cart, token = service.create_cart()
 
@@ -44,9 +57,13 @@ def get_cart(
             guest_cart_token=token,
         )
 
+    # -----------------------------------------------------------
+    # Existing guest cart
+    # -----------------------------------------------------------
+
     try:
         cart = service.get_cart(
-            token=x_guest_cart_token
+            token=x_guest_cart_token,
         )
 
         return build_guest_cart_response(
@@ -59,6 +76,10 @@ def get_cart(
             detail=str(exc),
         )
 
+
+# ===============================================================
+# ADD GUEST CART ITEM
+# ===============================================================
 
 @router.post(
     "/items",
@@ -85,6 +106,7 @@ def add_cart_item(
         cart = service.add_item(
             token=x_guest_cart_token,
             product_public_id=payload.product_public_id,
+            variant_public_id=payload.variant_public_id,
             quantity=payload.quantity,
         )
 
@@ -98,6 +120,10 @@ def add_cart_item(
             detail=str(exc),
         )
 
+
+# ===============================================================
+# UPDATE ITEM QUANTITY
+# ===============================================================
 
 @router.patch(
     "/items/{item_public_id}",
@@ -138,6 +164,10 @@ def update_cart_item(
         )
 
 
+# ===============================================================
+# REMOVE ITEM
+# ===============================================================
+
 @router.delete(
     "/items/{item_public_id}",
     response_model=GuestCartResponse,
@@ -175,6 +205,10 @@ def remove_cart_item(
         )
 
 
+# ===============================================================
+# CLEAR CART
+# ===============================================================
+
 @router.delete(
     "",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -196,7 +230,7 @@ def clear_cart(
 
     try:
         service.clear_cart(
-            token=x_guest_cart_token
+            token=x_guest_cart_token,
         )
 
         return Response(

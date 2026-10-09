@@ -7,8 +7,17 @@ from app.modules.admin.auth.routes.auth import (
 from app.modules.shop.catalog.routes.category import (
     router as category_router,
 )
+from app.modules.shop.inventory.routes.inventory_reservation import (
+    router as inventory_reservation_router,
+)
 from app.modules.admin.auth.routes.admin_user import (
     router as admin_user_router,
+)
+from app.modules.shop.inventory.routes.warehouse import (
+    router as inventory_warehouse_router,
+)
+from app.modules.shop.inventory.routes.stock_adjustment import (
+    router as stock_adjustment_router,
 )
 from app.modules.admin.auth.routes.permissions import (
     router as admin_permissions_router,
@@ -37,11 +46,17 @@ from app.modules.shop.catalog.routes.product_image import (
 from app.modules.shop.customer.routes.auth import (
     router as customer_auth_router,
 )
+from app.modules.shop.inventory.routes.inventory_movement import (
+    router as inventory_movement_router,
+)
 from app.modules.shop.customer.routes.otp import (
     router as customer_otp_router,
 )
 from app.modules.shop.customer.routes.address import (
     router as customer_address_router,
+)
+from app.modules.shop.catalog.routes.variant import (
+    router as variant_router,
 )
 from app.modules.shop.customer.routes.profile import (
     router as profile_router,
@@ -50,9 +65,14 @@ from app.modules.shop.checkout.routes.checkout import router as checkout_router
 from app.modules.shop.order.routes.order import router as order_router
 from app.modules.shop.payment.routes.payment import router as payment_router
 from app.modules.shop.payment.routes.refund import router as refund_router
-
+from app.modules.shop.inventory.routes.inventory_stock import (
+    router as inventory_stock_router,
+)
 from app.modules.admin.order.routes import (
     order_router as admin_order_router,
+)
+from app.modules.shop.inventory.routes.inventory_balance import (
+    router as inventory_balance_router,
 )
 from app.modules.admin.notifications.routes.notification import (
     router as admin_notifications_router,
@@ -116,10 +136,36 @@ app.include_router(
     admin_notifications_router,
     prefix="/api/v1",
 )
+app.include_router(
+    inventory_warehouse_router,
+    prefix="/api/v1/admin/inventory",
+)
+app.include_router(
+    inventory_stock_router,
+    prefix="/api/v1/admin/inventory",
+)
+app.include_router(
+    inventory_balance_router,
+    prefix="/api/v1/admin/inventory",
 
+)
+app.include_router(
+    inventory_reservation_router,
+    prefix="/api/v1/admin/inventory",
+)
+
+app.include_router(
+    inventory_movement_router,
+    prefix="/api/v1/admin/inventory",
+)
+
+app.include_router(
+    stock_adjustment_router,
+    prefix="/api/v1/admin/inventory",
+)
 # ---------------------------------------------------------
 # Shop - Catalog
-# ---------------------------------------------------------
+# -------------------------------------------------
 
 
 app.include_router(
@@ -142,6 +188,10 @@ app.include_router(
     prefix="/api/v1/catalog",
 )
 
+app.include_router(
+    variant_router,
+    prefix="/api/v1/catalog",
+)
 # ---------------------------------------------------------
 # Shop - Cart
 # ---------------------------------------------------------

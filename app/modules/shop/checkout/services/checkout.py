@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -20,7 +21,7 @@ class CheckoutService:
         self.cart_repository = CustomerCartRepository(db)
 
     def create_checkout(self, customer_id: int) -> Checkout:
-        cart = self.cart_repository.get_cart_by_customer_id(customer_id)
+        cart = self.cart_repository.get_by_customer_id(customer_id)
 
         if cart is None:
             raise HTTPException(
@@ -56,13 +57,14 @@ class CheckoutService:
         self.checkout_repository.create(checkout)
 
         for cart_item in cart.items:
-            if cart_item.product is None:
+            product = cart_item.product
+            variant = cart_item.variant
+
+            if product is None:
                 raise HTTPException(
                     status_code=400,
                     detail="A product in the cart is no longer available.",
                 )
-
-            product = cart_item.product
 
             if not product.is_active:
                 raise HTTPException(
@@ -70,22 +72,68 @@ class CheckoutService:
                     detail=f"Product '{product.name}' is no longer available.",
                 )
 
-            unit_price = Decimal(str(product.price))
+            # A valid variant is required for variant-based inventory.
+            if variant is None or cart_item.variant_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"A valid variant must be selected for "
+                        f"product '{product.name}'. Please update your cart."
+                    ),
+                )
+
+            # Ensure the selected variant belongs to this product.
+            if variant.product_id != product.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"The selected variant does not belong to "
+                        f"product '{product.name}'. Please update your cart."
+                    ),
+                )
+
+            if not variant.is_active:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"The selected variant for '{product.name}' "
+                        "is no longer available."
+                    ),
+                )
+
             quantity = cart_item.quantity
+
+            if quantity <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cart item quantity must be greater than zero.",
+                )
+
+            # Variant price is authoritative, not the parent product price.
+            unit_price = Decimal(str(variant.price)).quantize(
+                Decimal("0.01")
+            )
             item_subtotal = unit_price * quantity
+
+            variant_label = getattr(variant, "flavour", None)
+            product_name = (
+                f"{product.name} - {variant_label}"
+                if variant_label
+                else product.name
+            )
 
             checkout_item = CheckoutItem(
                 public_id=str(uuid4()),
                 checkout_id=checkout.id,
                 product_id=product.id,
-                product_name=product.name,
+                variant_id=variant.id,
+                product_name=product_name,
                 unit_price=unit_price,
                 quantity=quantity,
                 subtotal=item_subtotal,
             )
 
             self.db.add(checkout_item)
-
             subtotal += item_subtotal
 
         checkout.subtotal = subtotal
@@ -152,7 +200,6 @@ class CheckoutService:
             )
 
         checkout.selected_address_id = address.id
-
         self.checkout_repository.save()
 
         return checkout
@@ -163,7 +210,12 @@ class CheckoutService:
     ) -> None:
         now = datetime.now(timezone.utc)
 
-        if checkout.expires_at <= now:
+        # Handle databases that return naive datetimes.
+        expires_at = checkout.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at <= now:
             if checkout.status == "created":
                 checkout.status = "expired"
                 self.checkout_repository.save()
@@ -172,7 +224,6 @@ class CheckoutService:
                 status_code=400,
                 detail="Checkout has expired.",
             )
-
 
     def confirm_checkout(
         self,
@@ -207,7 +258,10 @@ class CheckoutService:
         if checkout.selected_address_id is None:
             raise HTTPException(
                 status_code=400,
-                detail="Please select a delivery address before confirming checkout.",
+                detail=(
+                    "Please select a delivery address before "
+                    "confirming checkout."
+                ),
             )
 
         address = self.checkout_repository.get_customer_address_by_id(
@@ -232,7 +286,10 @@ class CheckoutService:
         if calculated_subtotal != checkout.subtotal:
             raise HTTPException(
                 status_code=409,
-                detail="Checkout pricing has changed. Please create a new checkout.",
+                detail=(
+                    "Checkout pricing has changed. "
+                    "Please create a new checkout."
+                ),
             )
 
         calculated_total = (
@@ -245,11 +302,10 @@ class CheckoutService:
         if calculated_total != checkout.total_amount:
             raise HTTPException(
                 status_code=409,
-                detail="Checkout total is invalid. Please create a new checkout.",
+                detail="Checkout total is invalid.",
             )
 
         checkout.status = "pricing_locked"
-
         self.checkout_repository.save()
 
         return checkout
