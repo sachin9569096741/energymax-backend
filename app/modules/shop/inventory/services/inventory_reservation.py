@@ -1,6 +1,6 @@
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -10,41 +10,26 @@ from app.modules.shop.inventory.constants.enums import (
     InventoryMovementType,
     InventoryReservationStatus,
 )
-
 from app.modules.shop.inventory.models.inventory_reservation import (
     InventoryReservation,
 )
-
 from app.modules.shop.inventory.repositories.inventory_balance import (
     InventoryBalanceRepository,
 )
-
 from app.modules.shop.inventory.repositories.inventory_movement import (
     InventoryMovementRepository,
 )
-
 from app.modules.shop.inventory.repositories.inventory_reservation import (
     InventoryReservationRepository,
 )
 
 
 class InventoryReservationService:
-
     def __init__(self, db: Session):
-
         self.db = db
-
-        self.reservation_repository = (
-            InventoryReservationRepository(db)
-        )
-
-        self.balance_repository = (
-            InventoryBalanceRepository(db)
-        )
-
-        self.movement_repository = (
-            InventoryMovementRepository(db)
-        )
+        self.reservation_repository = InventoryReservationRepository(db)
+        self.balance_repository = InventoryBalanceRepository(db)
+        self.movement_repository = InventoryMovementRepository(db)
 
     # ================================================================
     # CREATE RESERVATION
@@ -59,13 +44,8 @@ class InventoryReservationService:
         reference_type: str,
         reference_id: str,
         idempotency_key: str | None = None,
-        expires_at: datetime | None = None,
+        expires_at=None,
     ) -> InventoryReservation:
-
-        # ------------------------------------------------------------
-        # VALIDATE QUANTITY
-        # ------------------------------------------------------------
-
         quantity = Decimal(str(quantity))
 
         if quantity <= 0:
@@ -73,10 +53,6 @@ class InventoryReservationService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Reservation quantity must be greater than zero.",
             )
-
-        # ------------------------------------------------------------
-        # NORMALIZE REFERENCES
-        # ------------------------------------------------------------
 
         reference_type = reference_type.strip()
         reference_id = reference_id.strip()
@@ -93,12 +69,8 @@ class InventoryReservationService:
                 detail="Reference ID is required.",
             )
 
-        # ------------------------------------------------------------
         # IDEMPOTENCY CHECK
-        # ------------------------------------------------------------
-
         if idempotency_key:
-
             idempotency_key = idempotency_key.strip()
 
             existing_reservation = (
@@ -108,11 +80,7 @@ class InventoryReservationService:
             )
 
             if existing_reservation is not None:
-
-                if (
-                    existing_reservation.warehouse_id
-                    != warehouse_id
-                ):
+                if existing_reservation.warehouse_id != warehouse_id:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -121,10 +89,7 @@ class InventoryReservationService:
                         ),
                     )
 
-                if (
-                    existing_reservation.variant_id
-                    != variant_id
-                ):
+                if existing_reservation.variant_id != variant_id:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -133,12 +98,7 @@ class InventoryReservationService:
                         ),
                     )
 
-                if (
-                    Decimal(
-                        str(existing_reservation.quantity)
-                    )
-                    != quantity
-                ):
+                if Decimal(str(existing_reservation.quantity)) != quantity:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -147,10 +107,7 @@ class InventoryReservationService:
                         ),
                     )
 
-                if (
-                    existing_reservation.reference_type
-                    != reference_type
-                ):
+                if existing_reservation.reference_type != reference_type:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -159,10 +116,7 @@ class InventoryReservationService:
                         ),
                     )
 
-                if (
-                    existing_reservation.reference_id
-                    != reference_id
-                ):
+                if existing_reservation.reference_id != reference_id:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=(
@@ -171,48 +125,15 @@ class InventoryReservationService:
                         ),
                     )
 
-                # Same operation → return original reservation.
                 return existing_reservation
 
-        # ------------------------------------------------------------
-        # EXPIRATION
-        # ------------------------------------------------------------
+        # EXPIRY DISABLED: reservations do not expire automatically.
+        expires_at = None
 
-        now = datetime.now(timezone.utc)
-
-        if expires_at is None:
-
-            expires_at = now + timedelta(
-                minutes=15
-            )
-
-        else:
-
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(
-                    tzinfo=timezone.utc
-                )
-
-            else:
-                expires_at = expires_at.astimezone(
-                    timezone.utc
-                )
-
-            if expires_at <= now:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Expiration time must be in the future",
-                )
-
-        # ------------------------------------------------------------
         # LOCK INVENTORY BALANCE
-        # ------------------------------------------------------------
-
-        balance = (
-            self.balance_repository.get_for_update(
-                warehouse_id=warehouse_id,
-                variant_id=variant_id,
-            )
+        balance = self.balance_repository.get_for_update(
+            warehouse_id=warehouse_id,
+            variant_id=variant_id,
         )
 
         if balance is None:
@@ -221,30 +142,14 @@ class InventoryReservationService:
                 detail="Inventory balance not found.",
             )
 
-        # ------------------------------------------------------------
         # CALCULATE AVAILABLE STOCK
-        # ------------------------------------------------------------
+        on_hand = Decimal(str(balance.on_hand))
+        reserved = Decimal(str(balance.reserved))
+        damaged = Decimal(str(balance.damaged))
 
-        on_hand = Decimal(
-            str(balance.on_hand)
-        )
-
-        reserved = Decimal(
-            str(balance.reserved)
-        )
-
-        damaged = Decimal(
-            str(balance.damaged)
-        )
-
-        available = (
-            on_hand
-            - reserved
-            - damaged
-        )
+        available = on_hand - reserved - damaged
 
         if available < quantity:
-
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
@@ -254,37 +159,23 @@ class InventoryReservationService:
                 ),
             )
 
-        # ------------------------------------------------------------
-        # INCREASE RESERVED
-        # ------------------------------------------------------------
-
-        balance.reserved = (
-            reserved + quantity
-        )
-
+        # INCREASE RESERVED STOCK
+        balance.reserved = reserved + quantity
         self.db.flush()
 
-        # ------------------------------------------------------------
         # CREATE RESERVATION
-        # ------------------------------------------------------------
-
-        reservation = (
-            self.reservation_repository.create(
-                warehouse_id=warehouse_id,
-                variant_id=variant_id,
-                quantity=quantity,
-                status=InventoryReservationStatus.ACTIVE.value,
-                reference_type=reference_type,
-                reference_id=reference_id,
-                idempotency_key=idempotency_key,
-                expires_at=expires_at,
-            )
+        reservation = self.reservation_repository.create(
+            warehouse_id=warehouse_id,
+            variant_id=variant_id,
+            quantity=quantity,
+            status=InventoryReservationStatus.ACTIVE.value,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            idempotency_key=idempotency_key,
+            expires_at=None,
         )
 
-        # ------------------------------------------------------------
         # CREATE AUDIT MOVEMENT
-        # ------------------------------------------------------------
-
         self.movement_repository.create(
             warehouse_id=warehouse_id,
             variant_id=variant_id,
@@ -298,7 +189,6 @@ class InventoryReservationService:
         )
 
         self.db.flush()
-
         return reservation
 
     # ================================================================
@@ -310,11 +200,8 @@ class InventoryReservationService:
         *,
         reservation_id: int,
     ) -> InventoryReservation:
-
-        reservation = (
-            self.reservation_repository.get_for_update(
-                reservation_id
-            )
+        reservation = self.reservation_repository.get_for_update(
+            reservation_id
         )
 
         if reservation is None:
@@ -323,22 +210,15 @@ class InventoryReservationService:
                 detail="Reservation not found.",
             )
 
-        if (
-            reservation.status
-            != InventoryReservationStatus.ACTIVE.value
-        ):
+        if reservation.status != InventoryReservationStatus.ACTIVE.value:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Only active reservations can be released."
-                ),
+                detail="Only active reservations can be released.",
             )
 
-        balance = (
-            self.balance_repository.get_for_update(
-                warehouse_id=reservation.warehouse_id,
-                variant_id=reservation.variant_id,
-            )
+        balance = self.balance_repository.get_for_update(
+            warehouse_id=reservation.warehouse_id,
+            variant_id=reservation.variant_id,
         )
 
         if balance is None:
@@ -347,13 +227,8 @@ class InventoryReservationService:
                 detail="Inventory balance not found.",
             )
 
-        quantity = Decimal(
-            str(reservation.quantity)
-        )
-
-        reserved = Decimal(
-            str(balance.reserved)
-        )
+        quantity = Decimal(str(reservation.quantity))
+        reserved = Decimal(str(balance.reserved))
 
         if reserved < quantity:
             raise HTTPException(
@@ -364,24 +239,15 @@ class InventoryReservationService:
                 ),
             )
 
-        on_hand = Decimal(
-            str(balance.on_hand)
-        )
+        on_hand = Decimal(str(balance.on_hand))
 
-        balance.reserved = (
-            reserved - quantity
-        )
-
-        reservation.status = (
-            InventoryReservationStatus.RELEASED.value
-        )
+        # Release reserved stock; do not deduct on-hand stock.
+        balance.reserved = reserved - quantity
+        reservation.status = InventoryReservationStatus.RELEASED.value
 
         self.db.flush()
 
-        # ------------------------------------------------------------
         # RELEASE AUDIT MOVEMENT
-        # ------------------------------------------------------------
-
         self.movement_repository.create(
             warehouse_id=reservation.warehouse_id,
             variant_id=reservation.variant_id,
@@ -395,7 +261,6 @@ class InventoryReservationService:
         )
 
         self.db.flush()
-
         return reservation
 
     # ================================================================
@@ -407,11 +272,8 @@ class InventoryReservationService:
         *,
         reservation_id: int,
     ) -> InventoryReservation:
-
-        reservation = (
-            self.reservation_repository.get_for_update(
-                reservation_id
-            )
+        reservation = self.reservation_repository.get_for_update(
+            reservation_id
         )
 
         if reservation is None:
@@ -420,56 +282,21 @@ class InventoryReservationService:
                 detail="Reservation not found.",
             )
 
-        if (
-            reservation.status
-            == InventoryReservationStatus.CONFIRMED.value
-        ):
+        if reservation.status == InventoryReservationStatus.CONFIRMED.value:
             return reservation
 
-        if (
-            reservation.status
-            != InventoryReservationStatus.ACTIVE.value
-        ):
+        if reservation.status != InventoryReservationStatus.ACTIVE.value:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Only active reservations can be confirmed.",
             )
 
-        # ------------------------------------------------------------
-        # CHECK EXPIRATION
-        # ------------------------------------------------------------
+        # Expiry validation intentionally removed.
 
-        now = datetime.now(timezone.utc)
-
-        if reservation.expires_at is not None:
-
-            expires_at = reservation.expires_at
-
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(
-                    tzinfo=timezone.utc
-                )
-            else:
-                expires_at = expires_at.astimezone(
-                    timezone.utc
-                )
-
-            if expires_at <= now:
-
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Reservation has expired.",
-                )
-
-        # ------------------------------------------------------------
         # LOCK BALANCE
-        # ------------------------------------------------------------
-
-        balance = (
-            self.balance_repository.get_for_update(
-                warehouse_id=reservation.warehouse_id,
-                variant_id=reservation.variant_id,
-            )
+        balance = self.balance_repository.get_for_update(
+            warehouse_id=reservation.warehouse_id,
+            variant_id=reservation.variant_id,
         )
 
         if balance is None:
@@ -478,21 +305,10 @@ class InventoryReservationService:
                 detail="Inventory balance not found.",
             )
 
-        quantity = Decimal(
-            str(reservation.quantity)
-        )
-
-        on_hand = Decimal(
-            str(balance.on_hand)
-        )
-
-        reserved = Decimal(
-            str(balance.reserved)
-        )
-
-        damaged = Decimal(
-            str(balance.damaged)
-        )
+        quantity = Decimal(str(reservation.quantity))
+        on_hand = Decimal(str(balance.on_hand))
+        reserved = Decimal(str(balance.reserved))
+        damaged = Decimal(str(balance.damaged))
 
         if reserved < quantity:
             raise HTTPException(
@@ -503,50 +319,29 @@ class InventoryReservationService:
                 ),
             )
 
-        # ------------------------------------------------------------
         # CHECK ACTUAL DEDUCTIBLE STOCK
-        # ------------------------------------------------------------
-
         available_for_deduction = (
-            on_hand
-            - reserved
-            - damaged
-            + quantity
+            on_hand - reserved - damaged + quantity
         )
 
         if available_for_deduction < quantity:
-
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"Insufficient stock for confirmation. "
+                    "Insufficient stock for confirmation. "
                     f"Available: {available_for_deduction}, "
                     f"Required: {quantity}."
                 ),
             )
 
-        # ------------------------------------------------------------
         # DEDUCT STOCK
-        # ------------------------------------------------------------
-
-        balance.on_hand = (
-            on_hand - quantity
-        )
-
-        balance.reserved = (
-            reserved - quantity
-        )
-
-        reservation.status = (
-            InventoryReservationStatus.CONFIRMED.value
-        )
+        balance.on_hand = on_hand - quantity
+        balance.reserved = reserved - quantity
+        reservation.status = InventoryReservationStatus.CONFIRMED.value
 
         self.db.flush()
 
-        # ------------------------------------------------------------
         # SALE MOVEMENT
-        # ------------------------------------------------------------
-
         self.movement_repository.create(
             warehouse_id=reservation.warehouse_id,
             variant_id=reservation.variant_id,
@@ -563,83 +358,17 @@ class InventoryReservationService:
         )
 
         self.db.flush()
-
         return reservation
 
     # ================================================================
     # EXPIRE RESERVATIONS
     # ================================================================
 
-    def expire_reservations(
-        self,
-    ) -> int:
+    def expire_reservations(self) -> int:
+        """
+        Automatic expiry is disabled.
 
-        now = datetime.now(timezone.utc)
-
-        reservations = (
-            self.reservation_repository.get_expired_active(
-                now=now
-            )
-        )
-
-        expired_count = 0
-
-        for reservation in reservations:
-
-            balance = (
-                self.balance_repository.get_for_update(
-                    warehouse_id=reservation.warehouse_id,
-                    variant_id=reservation.variant_id,
-                )
-            )
-
-            if balance is None:
-                continue
-
-            quantity = Decimal(
-                str(reservation.quantity)
-            )
-
-            reserved = Decimal(
-                str(balance.reserved)
-            )
-
-            on_hand = Decimal(
-                str(balance.on_hand)
-            )
-
-            if reserved < quantity:
-                continue
-
-            # --------------------------------------------------------
-            # RELEASE RESERVED STOCK
-            # --------------------------------------------------------
-
-            balance.reserved = (
-                reserved - quantity
-            )
-
-            reservation.status = (
-                InventoryReservationStatus.EXPIRED.value
-            )
-
-            self.movement_repository.create(
-                warehouse_id=reservation.warehouse_id,
-                variant_id=reservation.variant_id,
-                movement_type=InventoryMovementType.RELEASE.value,
-                quantity=quantity,
-                before_quantity=on_hand,
-                after_quantity=on_hand,
-                reference_type=reservation.reference_type,
-                reference_id=reservation.reference_id,
-                note=(
-                    f"Reservation expired and "
-                    f"{quantity} units released"
-                ),
-            )
-
-            expired_count += 1
-
-        self.db.flush()
-
-        return expired_count
+        Retained for compatibility with existing scheduled jobs.
+        This method must not release stock or change reservation status.
+        """
+        return 0
