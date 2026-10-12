@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -30,39 +31,35 @@ class CustomerAuthService:
     def register(
         self,
         data: CustomerRegisterRequest,
-    ) -> tuple[Customer, str]:
-
+    ) -> Customer:
         username = data.username.strip()
         email = data.email.lower().strip() if data.email else None
         phone = data.phone.strip() if data.phone else None
 
-        existing_username = self.repository.get_customer_by_username(
-            username
-        )
+        # Email verification is mandatory for registration.
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="An email address is required to register.",
+            )
 
-        if existing_username is not None:
+        if self.repository.get_customer_by_username(username):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Username is already registered.",
             )
 
-        if email:
-            existing_email = self.repository.get_customer_by_email(email)
+        if self.repository.get_customer_by_email(email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email is already registered.",
+            )
 
-            if existing_email is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Email is already registered.",
-                )
-
-        if phone:
-            existing_phone = self.repository.get_customer_by_phone(phone)
-
-            if existing_phone is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Phone number is already registered.",
-                )
+        if phone and self.repository.get_customer_by_phone(phone):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Phone number is already registered.",
+            )
 
         customer = Customer(
             public_id=str(uuid4()),
@@ -79,23 +76,19 @@ class CustomerAuthService:
 
         self.repository.create_customer(customer)
 
-        session_token = self._create_session(customer)
-
-        return customer, session_token
+        # Do not create a session until the email is verified.
+        return customer
 
     def login(
         self,
         data: CustomerLoginRequest,
     ) -> tuple[Customer, str]:
-
         identifier = data.identifier.strip()
 
         if "@" in identifier:
             identifier = identifier.lower()
 
-        customer = self.repository.get_customer_by_identifier(
-            identifier
-        )
+        customer = self.repository.get_customer_by_identifier(identifier)
 
         if customer is None:
             raise HTTPException(
@@ -109,13 +102,7 @@ class CustomerAuthService:
                 detail="Customer account is inactive.",
             )
 
-        if not customer.password_hash:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Password login is not available for this account.",
-            )
-
-        if not verify_password(
+        if not customer.password_hash or not verify_password(
             data.password,
             customer.password_hash,
         ):
@@ -124,17 +111,18 @@ class CustomerAuthService:
                 detail="Invalid credentials.",
             )
 
-        customer.last_login_at = datetime.now(timezone.utc)
+        if not customer.email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before logging in.",
+            )
 
+        customer.last_login_at = datetime.now(timezone.utc)
         session_token = self._create_session(customer)
 
         return customer, session_token
 
-    def _create_session(
-        self,
-        customer: Customer,
-    ) -> str:
-
+    def _create_session(self, customer: Customer) -> str:
         session_token = generate_session_token()
         token_hash = hash_session_token(session_token)
 

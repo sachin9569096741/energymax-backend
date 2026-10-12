@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi import Depends, Header, HTTPException
 from app.db.session import get_db
 from app.modules.shop.customer.repositories.customer_auth import (
     CustomerAuthRepository,
@@ -11,7 +10,12 @@ from app.modules.shop.customer.schemas.auth import (
     CustomerLoginRequest,
     CustomerRegisterRequest,
     CustomerResponse,
+    CustomerRegistrationResponse,
 )
+from app.modules.shop.customer.services.customer_email_verification import (
+    CustomerEmailVerificationService,
+)
+from app.modules.shop.customer.services.customer_otp import CustomerOTPService
 from app.modules.shop.customer.services.customer_auth import (
     CustomerAuthService,
 )
@@ -23,9 +27,10 @@ router = APIRouter(
 )
 
 
+
 @router.post(
     "/register",
-    response_model=CustomerAuthResponse,
+    response_model=CustomerRegistrationResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def register_customer(
@@ -33,17 +38,40 @@ def register_customer(
     db: Session = Depends(get_db),
 ):
     repository = CustomerAuthRepository(db)
-    service = CustomerAuthService(repository)
+    auth_service = CustomerAuthService(repository)
 
-    customer, session_token = service.register(data)
+    customer = auth_service.register(data)
 
-    db.commit()
-    db.refresh(customer)
+    if not customer.email:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail="An email address is required to register.",
+        )
 
-    return CustomerAuthResponse(
+    email_service = CustomerEmailVerificationService(repository)
+
+    try:
+        expires_at = email_service.send_verification_link(customer)
+
+        db.commit()
+        db.refresh(customer)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return CustomerRegistrationResponse(
+        message=(
+            "Registration successful. Please check your email "
+            "and click the verification link to verify your account."
+        ),
         customer=CustomerResponse.model_validate(customer),
-        session_token=session_token,
+        email=customer.email,
+        verification_required=True,
+        expires_at=expires_at,
     )
+
 
 
 @router.post(
@@ -98,3 +126,29 @@ def logout(
         return {
             "message": "Customer logged out successfully."
         }
+
+
+@router.post(
+    "/verify-email",
+    response_model=CustomerAuthResponse,
+)
+def verify_customer_email(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    repository = CustomerAuthRepository(db)
+    service = CustomerEmailVerificationService(repository)
+
+    try:
+        customer, session_token = service.verify_token(token)
+        db.commit()
+        db.refresh(customer)
+    except Exception:
+        db.rollback()
+        raise
+
+    return CustomerAuthResponse(
+        customer=CustomerResponse.model_validate(customer),
+        session_token=session_token,
+    )
+

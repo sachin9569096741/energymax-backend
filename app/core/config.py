@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     # Email / Resend
     resend_api_key: str
     resend_from_email: str
-    resend_from_name: str = "EnergyMax"
+    resend_from_name: str = "EnergyMaxGroup"
+    frontend_base_url: str = "https://energymaxgroup.in"
 
     # Admin authentication
     jwt_secret_key: str

@@ -197,7 +197,7 @@ def release_reservation(
     service = InventoryReservationService(db)
 
     reservation = service.release(
-        reservation_id
+        reservation_id=reservation_id
     )
 
     db.commit()
@@ -221,7 +221,7 @@ def confirm_reservation(
     service = InventoryReservationService(db)
 
     reservation = service.confirm(
-        reservation_id
+        reservation_id=reservation_id
     )
 
     db.commit()

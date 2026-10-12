@@ -50,6 +50,9 @@ from app.modules.shop.inventory.models.inventory_reservation import (
 from app.modules.shop.inventory.models.stock_adjustment import (
     StockAdjustment,
 )
+from app.modules.shop.customer.models.customer_email_verification import (
+    CustomerEmailVerification,
+)
 
 
 __all__ = [
@@ -87,4 +90,5 @@ __all__ = [
     "InventoryMovement",
     "InventoryReservation",
     "StockAdjustment"
+    "CustomerEmailVerification",
 ]

@@ -16,6 +16,9 @@ from app.modules.admin.auth.routes.admin_user import (
 from app.modules.shop.inventory.routes.warehouse import (
     router as inventory_warehouse_router,
 )
+from app.modules.admin.customer.routes.customer import (
+    router as admin_customer_router,
+)
 from app.modules.shop.inventory.routes.stock_adjustment import (
     router as stock_adjustment_router,
 )
@@ -74,6 +77,9 @@ from app.modules.admin.order.routes import (
 from app.modules.shop.inventory.routes.inventory_balance import (
     router as inventory_balance_router,
 )
+from app.modules.admin.analytics.routes.overview import (
+    router as admin_analytics_router,
+)
 from app.modules.admin.notifications.routes.notification import (
     router as admin_notifications_router,
 )
@@ -129,6 +135,10 @@ app.include_router(
     prefix="/api/v1",
 )
 app.include_router(
+    admin_customer_router,
+    prefix="/api/v1",
+)
+app.include_router(
     admin_order_router,
     prefix="/api/v1",
 )
@@ -162,6 +172,10 @@ app.include_router(
 app.include_router(
     stock_adjustment_router,
     prefix="/api/v1/admin/inventory",
+)
+app.include_router(
+    admin_analytics_router,
+    prefix="/api/v1",
 )
 # ---------------------------------------------------------
 # Shop - Catalog

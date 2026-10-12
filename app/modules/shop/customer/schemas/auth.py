@@ -64,3 +64,11 @@ class CustomerAuthResponse(BaseModel):
 class CustomerOTPResponse(BaseModel):
     message: str
     expires_at: datetime | None = None
+
+
+class CustomerRegistrationResponse(BaseModel):
+    message: str
+    customer: CustomerResponse
+    email: EmailStr
+    verification_required: bool = True
+    expires_at: datetime

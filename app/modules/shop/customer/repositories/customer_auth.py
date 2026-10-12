@@ -6,7 +6,9 @@ from sqlalchemy import update
 from app.modules.shop.customer.models.customer import Customer
 from app.modules.shop.customer.models.customer_session import CustomerSession
 from app.modules.shop.customer.models.customer_otp import CustomerOTP
-
+from app.modules.shop.customer.models.customer_email_verification import (
+    CustomerEmailVerification,
+)
 
 class CustomerAuthRepository:
     def __init__(self, db: Session):
@@ -151,3 +153,39 @@ class CustomerAuthRepository:
 
         self.db.flush()
         return True
+
+    def create_email_verification(
+        self,
+        verification: CustomerEmailVerification,
+    ) -> CustomerEmailVerification:
+        self.db.add(verification)
+        self.db.flush()
+        return verification
+
+    def invalidate_email_verifications(
+        self,
+        customer_id: int,
+    ) -> None:
+        statement = (
+            update(CustomerEmailVerification)
+            .where(
+                CustomerEmailVerification.customer_id == customer_id,
+                CustomerEmailVerification.used_at.is_(None),
+            )
+            .values(used_at=datetime.now(timezone.utc))
+        )
+        self.db.execute(statement)
+        self.db.flush()
+
+    def get_email_verification_by_hash(
+        self,
+        token_hash: str,
+    ) -> CustomerEmailVerification | None:
+        statement = (
+            select(CustomerEmailVerification)
+            .where(
+                CustomerEmailVerification.token_hash == token_hash
+            )
+            .with_for_update()
+        )
+        return self.db.scalar(statement)

@@ -9,7 +9,14 @@ from app.modules.admin.notifications.services.notification import (
     NotificationService,
 
 )
+import logging
 
+from app.core.email import EmailService
+from app.modules.shop.customer.services.email_templates import (
+    build_order_confirmation_email,
+)
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 
 from app.modules.admin.auth.models.admin_user import AdminUser
@@ -69,6 +76,42 @@ class PaymentService:
     # HELPERS
 
     # =========================================================
+
+
+        def _send_order_confirmation_email(self, *, order, payment) -> None:
+            # Prevent duplicate confirmation emails.
+            if order.confirmation_email_sent_at is not None:
+                return
+
+            if not order.customer_email:
+                logger.warning(
+                    "Order confirmation email skipped: no customer email for %s",
+                    order.order_number,
+                )
+                return
+
+            try:
+                html = build_order_confirmation_email(order, payment)
+
+                EmailService().send_email(
+                    to=order.customer_email,
+                    subject=f"Order confirmed — {order.order_number}",
+                    html=html,
+                )
+
+                order.confirmation_email_sent_at = datetime.now(timezone.utc)
+
+                logger.info(
+                    "Order confirmation email sent for %s",
+                    order.order_number,
+                )
+
+            except Exception:
+                # Email failure must not turn a successful payment into a failure.
+                logger.exception(
+                    "Failed to send order confirmation email for %s",
+                    order.order_number,
+                )
 
     @staticmethod
 
@@ -1032,6 +1075,8 @@ class PaymentService:
                     order
 
                 )
+            self._send_order_confirmation_email(order=order, payment=payment,
+                                                )
 
         if not already_succeeded:
 
