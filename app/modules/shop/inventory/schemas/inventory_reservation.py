@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ReservationCreateRequest(BaseModel):
@@ -45,6 +45,8 @@ class ReservationCreateRequest(BaseModel):
 
 
 class ReservationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
     id: int
     warehouse_id: int
     variant_id: int
@@ -52,11 +54,13 @@ class ReservationResponse(BaseModel):
     status: str
     reference_type: str
     reference_id: str
-    expires_at: datetime | None
+    expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class ReservationListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     items: list[ReservationResponse]
     total: int
