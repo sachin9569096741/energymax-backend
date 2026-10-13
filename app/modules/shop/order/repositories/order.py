@@ -142,3 +142,35 @@ class OrderRepository:
 
     def save(self) -> None:
         self.db.flush()
+
+
+    def list_customer_orders(
+        self,
+        *,
+        customer_id: int,
+        page: int = 1,
+        page_size: int = 10,
+    ):
+        offset = (page - 1) * page_size
+
+        count_statement = (
+            select(func.count(Order.id))
+            .where(Order.customer_id == customer_id)
+        )
+
+        total = self.db.scalar(count_statement) or 0
+
+        statement = (
+            select(Order)
+            .options(
+                selectinload(Order.items),
+            )
+            .where(Order.customer_id == customer_id)
+            .order_by(Order.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+
+        orders = list(self.db.scalars(statement).all())
+
+        return orders, total

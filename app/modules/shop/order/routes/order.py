@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -8,6 +8,7 @@ from app.modules.shop.order.services.order import OrderService
 from app.modules.shop.order.schemas.order import (
     OrderResponse,
     OrderTrackingResponse,
+    CustomerOrderListResponse
 )
 from app.modules.shop.order.constants.status import (
     ORDER_STATUS_LABELS,
@@ -103,3 +104,36 @@ def track_order_by_number(
     return service.get_order_tracking_by_number(
         order_number=order_number,
     )
+
+
+@router.get(
+    "/my",
+    response_model=CustomerOrderListResponse,
+)
+def get_my_orders(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+    current_customer=Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    service = OrderService(db)
+
+    orders, total = service.get_customer_orders(
+        customer_id=current_customer.id,
+        page=page,
+        page_size=page_size,
+    )
+
+    total_pages = (
+        (total + page_size - 1) // page_size
+        if total
+        else 0
+    )
+
+    return {
+        "items": orders,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }

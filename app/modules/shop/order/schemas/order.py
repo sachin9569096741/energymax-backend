@@ -77,3 +77,10 @@ class OrderTrackingResponse(BaseModel):
     order_number: str
     current_status: str
     timeline: list[OrderTrackingEventResponse]
+
+class CustomerOrderListResponse(BaseModel):
+    items: list[OrderResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

@@ -493,3 +493,17 @@ class OrderService:
                 )
 
 
+    def get_customer_orders(
+        self,
+        *,
+        customer_id: int,
+        page: int = 1,
+        page_size: int = 10,
+    ):
+        return self.order_repository.list_customer_orders(
+            customer_id=customer_id,
+            page=page,
+            page_size=page_size,
+        )
+
+
