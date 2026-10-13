@@ -77,6 +77,9 @@ from app.modules.shop.customer.routes.forgot_password import (
 from app.modules.admin.order.routes import (
     order_router as admin_order_router,
 )
+from app.modules.shop.customer.routes.wishlist import (
+    router as customer_wishlist_router,
+)
 from app.modules.shop.inventory.routes.inventory_balance import (
     router as inventory_balance_router,
 )
@@ -260,6 +263,10 @@ app.include_router(
 
 app.include_router(
     order_router,
+    prefix="/api/v1/shop",
+)
+app.include_router(
+    customer_wishlist_router,
     prefix="/api/v1/shop",
 )
 app.include_router(payment_router, prefix="/api/v1/shop")

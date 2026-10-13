@@ -53,6 +53,7 @@ from app.modules.shop.inventory.models.stock_adjustment import (
 from app.modules.shop.customer.models.customer_email_verification import (
     CustomerEmailVerification,
 )
+from app.modules.shop.customer.models.wishlist_item import WishlistItem
 
 
 __all__ = [
@@ -89,6 +90,7 @@ __all__ = [
     "InventoryBalance",
     "InventoryMovement",
     "InventoryReservation",
-    "StockAdjustment"
+    "StockAdjustment",
     "CustomerEmailVerification",
+    "WishlistItem",
 ]
