@@ -72,3 +72,42 @@ class CustomerRegistrationResponse(BaseModel):
     email: EmailStr
     verification_required: bool = True
     expires_at: datetime
+
+
+class ForgotPasswordRequest(BaseModel):
+    method: str = Field(
+        pattern="^(username|email|phone)$"
+    )
+    identifier: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+
+
+class ForgotPasswordConfirmOTPRequest(ForgotPasswordRequest):
+    code: str = Field(
+        min_length=6,
+        max_length=6,
+        pattern="^[0-9]{6}$",
+    )
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    reset_token: str = Field(
+        min_length=20,
+        max_length=200,
+    )
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+
+class ForgotPasswordOTPResponse(BaseModel):
+    message: str
+
+
+class ForgotPasswordConfirmOTPResponse(BaseModel):
+    message: str
+    reset_token: str
+    expires_at: datetime

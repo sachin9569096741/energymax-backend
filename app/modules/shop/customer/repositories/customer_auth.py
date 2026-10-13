@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
@@ -189,3 +189,67 @@ class CustomerAuthRepository:
             .with_for_update()
         )
         return self.db.scalar(statement)
+
+
+
+    def get_password_reset_grant(
+        self,
+        token_hash: str,
+    ) -> CustomerOTP | None:
+        statement = (
+            select(CustomerOTP)
+            .where(
+                CustomerOTP.purpose == "password_reset",
+                CustomerOTP.code_hash == token_hash,
+                CustomerOTP.consumed_at.is_not(None),
+            )
+            .order_by(CustomerOTP.created_at.desc())
+            .limit(1)
+        )
+
+        return self.db.scalar(statement)
+
+
+    def invalidate_password_reset_records(
+        self,
+        customer_id: int,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+
+        statement = (
+            update(CustomerOTP)
+            .where(
+                CustomerOTP.customer_id == customer_id,
+                CustomerOTP.purpose == "password_reset",
+            )
+            .values(
+                consumed_at=now,
+                expires_at=now,
+                code_hash="invalidated",
+            )
+        )
+
+        self.db.execute(statement)
+        self.db.flush()
+
+
+    def revoke_customer_sessions(
+        self,
+        customer_id: int,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+
+        statement = (
+            update(CustomerSession)
+            .where(
+                CustomerSession.customer_id == customer_id,
+                CustomerSession.is_active.is_(True),
+            )
+            .values(
+                is_active=False,
+                revoked_at=now,
+            )
+        )
+
+        self.db.execute(statement)
+        self.db.flush()

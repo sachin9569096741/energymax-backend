@@ -71,6 +71,9 @@ from app.modules.shop.payment.routes.refund import router as refund_router
 from app.modules.shop.inventory.routes.inventory_stock import (
     router as inventory_stock_router,
 )
+from app.modules.shop.customer.routes.forgot_password import (
+    router as customer_forgot_password_router,
+)
 from app.modules.admin.order.routes import (
     order_router as admin_order_router,
 )
@@ -226,6 +229,10 @@ app.include_router(
 
 app.include_router(
     customer_auth_router,
+    prefix="/api/v1/shop",
+)
+app.include_router(
+    customer_forgot_password_router,
     prefix="/api/v1/shop",
 )
 
