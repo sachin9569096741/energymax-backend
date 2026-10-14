@@ -54,6 +54,8 @@ from app.modules.shop.customer.models.customer_email_verification import (
     CustomerEmailVerification,
 )
 from app.modules.shop.customer.models.wishlist_item import WishlistItem
+from app.modules.shop.coupons.models.coupon import Coupon
+from app.modules.shop.coupons.models.coupon_redemption import CouponRedemption
 
 
 __all__ = [
@@ -93,4 +95,6 @@ __all__ = [
     "StockAdjustment",
     "CustomerEmailVerification",
     "WishlistItem",
+    "Coupon",
+    "CouponRedemption",
 ]

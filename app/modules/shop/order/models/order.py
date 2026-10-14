@@ -131,6 +131,10 @@ class Order(Base):
         nullable=True,
         default=None,
     )
+    coupon_code: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
 
     customer = relationship("Customer")
     checkout = relationship("Checkout")

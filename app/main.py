@@ -13,6 +13,10 @@ from app.modules.shop.inventory.routes.inventory_reservation import (
 from app.modules.admin.auth.routes.admin_user import (
     router as admin_user_router,
 )
+from app.modules.shop.coupons.routes import (
+    customer_router as customer_coupon_router,
+    admin_router as admin_coupon_router,
+)
 from app.modules.shop.inventory.routes.warehouse import (
     router as inventory_warehouse_router,
 )
@@ -183,6 +187,10 @@ app.include_router(
     admin_analytics_router,
     prefix="/api/v1",
 )
+app.include_router(
+    admin_coupon_router,
+    prefix="/api/v1",
+)
 # ---------------------------------------------------------
 # Shop - Catalog
 # -------------------------------------------------
@@ -267,6 +275,10 @@ app.include_router(
 )
 app.include_router(
     customer_wishlist_router,
+    prefix="/api/v1/shop",
+)
+app.include_router(
+    customer_coupon_router,
     prefix="/api/v1/shop",
 )
 app.include_router(payment_router, prefix="/api/v1/shop")

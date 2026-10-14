@@ -33,7 +33,7 @@ class CheckoutResponse(BaseModel):
     shipping_amount: Decimal
     tax_amount: Decimal
     total_amount: Decimal
-
+    coupon_code: str | None
     expires_at: datetime
     created_at: datetime
     updated_at: datetime

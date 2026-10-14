@@ -103,6 +103,16 @@ class Checkout(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    coupon_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coupons.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    coupon_code: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
 
     customer = relationship("Customer")
 
