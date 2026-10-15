@@ -16,11 +16,35 @@ MAX_TOKEN_LENGTH = 4096
 
 
 def _normalize_hostname(hostname: str | None) -> str | None:
-    """Normalize a hostname for safe, case-insensitive comparison."""
+    """Normalize a hostname for case-insensitive comparison."""
     if not hostname:
         return None
 
-    return hostname.strip().rstrip(".").lower()
+    return hostname.strip().rstrip(".").lower() or None
+
+
+def _get_allowed_hostnames() -> set[str]:
+    """
+    Read explicitly allowed hostnames from application settings.
+
+    Configure:
+    CLOUDFLARE_TURNSTILE_ALLOWED_HOSTNAMES=
+        energymaxgroup.in,www.energymaxgroup.in
+    """
+    raw_hostnames = getattr(
+        settings,
+        "cloudflare_turnstile_allowed_hostnames",
+        "",
+    )
+
+    if not isinstance(raw_hostnames, str):
+        return set()
+
+    return {
+        normalized
+        for hostname in raw_hostnames.split(",")
+        if (normalized := _normalize_hostname(hostname))
+    }
 
 
 def verify_captcha(
@@ -35,16 +59,7 @@ def verify_captcha(
         "",
     )
 
-    expected_hostname = _normalize_hostname(
-        getattr(
-            settings,
-            "cloudflare_turnstile_expected_hostname",
-            "",
-        )
-    )
-
-    # Fail closed if server configuration is incomplete.
-    if not secret:
+    if not isinstance(secret, str) or not secret.strip():
         logger.error(
             "Cloudflare Turnstile secret is not configured"
         )
@@ -54,6 +69,17 @@ def verify_captcha(
                 "Verification is temporarily unavailable. "
                 "Please try again later."
             ),
+        )
+
+    allowed_hostnames = _get_allowed_hostnames()
+
+    if not allowed_hostnames:
+        logger.error(
+            "Cloudflare Turnstile allowed hostnames are not configured"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Verification is temporarily unavailable.",
         )
 
     if not isinstance(token, str) or not token.strip():
@@ -70,8 +96,8 @@ def verify_captcha(
             detail="CAPTCHA verification failed. Please try again.",
         )
 
-    payload = {
-        "secret": secret,
+    payload: dict[str, str] = {
+        "secret": secret.strip(),
         "response": token,
     }
 
@@ -105,7 +131,6 @@ def verify_captcha(
             ),
         ) from None
 
-    # Cloudflare explicitly indicates whether verification succeeded.
     if result.get("success") is not True:
         logger.warning(
             "Turnstile verification failed: error_codes=%s",
@@ -120,22 +145,14 @@ def verify_captcha(
         result.get("hostname")
     )
 
-    # Require an explicitly configured hostname and a hostname
-    # returned by Cloudflare. Never silently skip this security check.
-    if not expected_hostname:
-        logger.error(
-            "Cloudflare Turnstile expected hostname is not configured"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Verification is temporarily unavailable.",
-        )
-
-    if not actual_hostname or actual_hostname != expected_hostname:
+    if (
+        not actual_hostname
+        or actual_hostname not in allowed_hostnames
+    ):
         logger.warning(
-            "Turnstile hostname mismatch: expected=%r actual=%r",
-            expected_hostname,
+            "Turnstile hostname mismatch: actual=%r allowed=%s",
             actual_hostname,
+            sorted(allowed_hostnames),
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
