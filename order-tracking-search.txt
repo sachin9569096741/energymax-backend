@@ -1,0 +1,43 @@
+﻿C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order.py:42: order_number: Mapped[str] = mapped_column(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order.py:148: status_history = relationship(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order_status_history.py:10: __tablename__ = "order_status_history"
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order_status_history.py:14: "ix_order_status_history_order_id",
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order_status_history.py:18: "ix_order_status_history_created_at",
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\order_status_history.py:61: back_populates="status_history",
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\models\__init__.py:3: from app.modules.shop.order.models.order_status_history import (
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:20: selectinload(Order.status_history),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:38: selectinload(Order.status_history),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:66: selectinload(Order.status_history),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:94: Order.order_number.ilike(search_value)
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:119: def get_by_order_number_for_tracking(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:121: order_number: str,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:126: selectinload(Order.status_history),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\repositories\order.py:129: Order.order_number == order_number,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:10: OrderTrackingResponse,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:54: "/{order_public_id}/tracking",
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:55: response_model=OrderTrackingResponse,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:57: def get_order_tracking(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:64: order = service.get_order_tracking(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:71: for history in order.status_history:
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:88: "order_number": order.order_number,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:95: "/track/{order_number}",
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:96: response_model=OrderTrackingResponse,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:99: order_number: str,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:104: return service.get_order_tracking_by_number(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\routes\order.py:105: order_number=order_number,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\schemas\order.py:20: order_number: str
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\schemas\order.py:66: class OrderTrackingEventResponse(BaseModel):
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\schemas\order.py:75: class OrderTrackingResponse(BaseModel):
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\schemas\order.py:77: order_number: str
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\schemas\order.py:79: timeline: list[OrderTrackingEventResponse]
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:27: from app.modules.shop.order.models.order_status_history import (
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:184: order_number=self._generate_order_number(),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:263: order_number=order.order_number,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:272: def _generate_order_number() -> str:
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:382: def get_order_tracking(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:400: def get_order_tracking_by_number(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:402: order_number: str,
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:404: order = self.order_repository.get_by_order_number_for_tracking(
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:405: order_number=order_number.strip().upper(),
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:416: for history in order.status_history:
+C:\Users\SACHIN\OneDrive\Desktop\energymax\energymax-backend\app\modules\shop\order\services\order.py:433: "order_number": order.order_number,

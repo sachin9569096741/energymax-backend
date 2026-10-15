@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
+    # CLOUDFLARE Turnstile
+    cloudflare_turnstile_secret_key: str
+    cloudflare_turnstile_expected_hostname: str = "energymaxgroup.in"
+
     # Cashfree Payments
     cashfree_app_id: str
     cashfree_secret_key: str

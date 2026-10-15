@@ -53,6 +53,11 @@ from app.modules.shop.inventory.models.stock_adjustment import (
 from app.modules.shop.customer.models.customer_email_verification import (
     CustomerEmailVerification,
 )
+from app.modules.affiliate.models.affiliate_application import (
+    AffiliateApplication,
+)
+from app.modules.affiliate.models.affiliate_session import AffiliateSession
+from app.modules.affiliate.models.affiliate import Affiliate
 from app.modules.shop.customer.models.wishlist_item import WishlistItem
 from app.modules.shop.coupons.models.coupon import Coupon
 from app.modules.shop.coupons.models.coupon_redemption import CouponRedemption
@@ -97,4 +102,7 @@ __all__ = [
     "WishlistItem",
     "Coupon",
     "CouponRedemption",
+    "AffiliateApplication",
+    "Affiliate",
+    "AffiliateSession",
 ]
