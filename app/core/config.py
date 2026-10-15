@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # CLOUDFLARE Turnstile
     cloudflare_turnstile_secret_key: str
-    cloudflare_turnstile_expected_hostname: tuple[str, ...] = (
+    cloudflare_turnstile_expected_hostname: str = (
         "energymaxgroup.in",
         "www.energymaxgroup.in"
     )
