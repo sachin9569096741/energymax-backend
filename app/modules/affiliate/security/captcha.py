@@ -67,6 +67,11 @@ def verify_captcha(
         )
 
     if result.get("success") is not True:
+        logger.warning(
+            "Turnstile verification failed: error_codes=%s hostname=%s",
+            result.get("error-codes"),
+            result.get("hostname"),
+        )
         raise HTTPException(
             status_code=400,
             detail="CAPTCHA verification failed. Please try again.",
