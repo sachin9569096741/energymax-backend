@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-
+from app.modules.affiliate.models.affiliate_session import AffiliateSession
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -85,3 +85,9 @@ class Affiliate(Base):
     application = relationship("AffiliateApplication")
     customer = relationship("Customer")
     approver = relationship("AdminUser", foreign_keys=[approved_by_admin_id])
+    sessions: Mapped[list["AffiliateSession"]] = relationship(
+        "AffiliateSession",
+        back_populates="affiliate",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
