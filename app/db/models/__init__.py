@@ -61,6 +61,7 @@ from app.modules.affiliate.models.affiliate import Affiliate
 from app.modules.shop.customer.models.wishlist_item import WishlistItem
 from app.modules.shop.coupons.models.coupon import Coupon
 from app.modules.shop.coupons.models.coupon_redemption import CouponRedemption
+from app.modules.shop.shipping.models.shipment import Shipment
 
 
 __all__ = [
@@ -105,4 +106,5 @@ __all__ = [
     "AffiliateApplication",
     "Affiliate",
     "AffiliateSession",
+    "Shipment",
 ]

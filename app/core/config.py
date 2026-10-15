@@ -32,6 +32,12 @@ class Settings(BaseSettings):
         "www.energymaxgroup.in"
     )
 
+    shiprocket_api_email: str = ""
+    shiprocket_api_password: str = ""
+    shiprocket_base_url: str = (
+        "https://apiv2.shiprocket.in/v1/external"
+    )
+
     # Cashfree Payments
     cashfree_app_id: str
     cashfree_secret_key: str
