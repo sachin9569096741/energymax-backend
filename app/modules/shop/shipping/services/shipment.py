@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.shiprocket import ShiprocketClient, ShiprocketError
@@ -22,6 +22,25 @@ logger = logging.getLogger(__name__)
 
 SHIPROCKET_PICKUP_LOCATION = "warehouse"
 
+
+
+
+def _find_response_value(payload, key):
+    """Find a non-null field in a nested Shiprocket JSON response."""
+    if isinstance(payload, dict):
+        value = payload.get(key)
+        if value is not None:
+            return value
+        for child in payload.values():
+            found = _find_response_value(child, key)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for child in payload:
+            found = _find_response_value(child, key)
+            if found is not None:
+                return found
+    return None
 
 class ShipmentService:
     def __init__(self, db, shiprocket_client=None):
@@ -197,6 +216,508 @@ class ShipmentService:
             ) from None
 
         return shipment
+
+
+
+    def _claim_operation(self, shipment: Shipment, operation: str) -> None:
+        """Atomically claim a shipment operation before calling Shiprocket."""
+        fields = {
+            "awb": "awb_operation_status",
+            "pickup": "pickup_operation_status",
+            "label": "label_operation_status",
+            "manifest": "manifest_operation_status",
+        }
+        field = fields.get(operation)
+        if field is None:
+            raise ValueError("Unsupported shipment operation.")
+
+        operation_column = getattr(Shipment, field)
+
+        try:
+            claimed_id = self.db.scalar(
+                update(Shipment)
+                .where(
+                    Shipment.id == shipment.id,
+                    operation_column == "idle",
+                )
+                .values({field: "in_progress"})
+                .returning(Shipment.id)
+            )
+
+            if claimed_id is None:
+                self.db.rollback()
+                raise ValueError(
+                    f"{operation.capitalize()} operation cannot be claimed: "
+                    "it is no longer idle. Check its current state and "
+                    "reconcile with Shiprocket before retrying."
+                )
+
+            self.db.commit()
+            self.db.refresh(shipment)
+        except ValueError:
+            raise
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def assign_awb(
+        self,
+        *,
+        order_public_id: str,
+        courier_id: int | None = None,
+    ) -> Shipment:
+        """Assign a courier and generate an AWB for an existing shipment."""
+        order = self.db.scalar(
+            select(Order).where(Order.public_id == order_public_id)
+        )
+
+        if order is None:
+            raise ValueError("Order not found.")
+
+        shipment = self.repository.get_by_order_id(
+            order.id,
+            for_update=True,
+        )
+
+        if shipment is None:
+            raise ValueError("Create the Shiprocket shipment first.")
+
+        if not shipment.shiprocket_shipment_id:
+            raise ValueError(
+                "The Shiprocket shipment ID is missing. Reconcile first."
+            )
+
+        if shipment.awb_code:
+            raise ValueError(
+                "An AWB is already assigned. Do not assign another."
+            )
+
+        if shipment.status != "created":
+            raise ValueError(
+                f"Cannot assign an AWB when shipment status is "
+                f"'{shipment.status}'."
+            )
+
+        payload = {
+            "shipment_id": int(shipment.shiprocket_shipment_id),
+        }
+
+        if courier_id is not None:
+            if courier_id <= 0:
+                raise ValueError("Courier ID must be a positive integer.")
+            payload["courier_id"] = courier_id
+
+        self._claim_operation(shipment, "awb")
+
+        try:
+            response = self.shiprocket.request(
+                "POST",
+                "/courier/assign/awb",
+                json=payload,
+            )
+        except Exception:
+            shipment.awb_operation_status = "unknown"
+            shipment.last_error = (
+                "AWB assignment outcome is uncertain. "
+                "Check Shiprocket before retrying."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "AWB assignment could not be confirmed. "
+                "Reconcile the shipment before retrying."
+            ) from None
+
+        if not isinstance(response, dict):
+            shipment.awb_operation_status = "unknown"
+            shipment.last_error = "Unexpected AWB assignment response."
+            self.db.commit()
+            raise ShiprocketError(
+                "Unexpected AWB response. Reconcile before retrying."
+            )
+
+        awb_code = _find_response_value(response, "awb_code")
+        courier_name = _find_response_value(response, "courier_name")
+
+        if not awb_code:
+            shipment.awb_operation_status = "unknown"
+            shipment.last_error = (
+                "Shiprocket response contained no AWB. Reconciliation required."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "No AWB was returned. Check Shiprocket before retrying."
+            )
+
+        shipment.awb_code = str(awb_code)
+        shipment.courier_name = (
+            str(courier_name) if courier_name else None
+        )
+        shipment.status = "awb_assigned"
+        shipment.awb_operation_status = "succeeded"
+        shipment.last_error = None
+
+        try:
+            self.db.commit()
+            self.db.refresh(shipment)
+        except Exception:
+            self.db.rollback()
+            raise ShiprocketError(
+                "AWB may have been assigned, but saving it failed. "
+                "Reconcile before retrying."
+            ) from None
+
+        return shipment
+
+
+
+    def request_pickup(
+        self,
+        *,
+        order_public_id: str,
+    ) -> Shipment:
+        """Request courier pickup for a shipment with an assigned AWB."""
+        order = self.db.scalar(
+            select(Order).where(Order.public_id == order_public_id)
+        )
+
+        if order is None:
+            raise ValueError("Order not found.")
+
+        shipment = self.repository.get_by_order_id(
+            order.id,
+            for_update=True,
+        )
+
+        if shipment is None:
+            raise ValueError("Create the shipment first.")
+
+        if not shipment.shiprocket_shipment_id:
+            raise ValueError("Shiprocket shipment ID is missing.")
+
+        if not shipment.awb_code:
+            raise ValueError("Assign a courier and AWB before pickup.")
+
+        if shipment.pickup_token_number:
+            raise ValueError(
+                "A pickup request already exists. Check its status "
+                "before requesting pickup again."
+            )
+
+        if shipment.status != "awb_assigned":
+            raise ValueError(
+                f"Cannot request pickup when shipment status is "
+                f"'{shipment.status}'."
+            )
+
+        self._claim_operation(shipment, "pickup")
+
+        try:
+            response = self.shiprocket.request(
+                "POST",
+                "/courier/generate/pickup",
+                json={
+                    "shipment_id": [
+                        int(shipment.shiprocket_shipment_id)
+                    ]
+                },
+            )
+        except Exception:
+            shipment.pickup_operation_status = "unknown"
+            shipment.last_error = (
+                "Pickup outcome is uncertain. Check Shiprocket "
+                "before attempting another request."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Pickup could not be confirmed. Reconcile it in "
+                "Shiprocket before retrying."
+            ) from None
+
+        if not isinstance(response, dict):
+            shipment.pickup_operation_status = "unknown"
+            shipment.last_error = "Unexpected pickup response."
+            self.db.commit()
+            raise ShiprocketError(
+                "Unexpected pickup response. Reconcile before retrying."
+            )
+
+        pickup_status = _find_response_value(response, "pickup_status")
+
+        token = _find_response_value(response, "pickup_token_number")
+        scheduled_at = _find_response_value(response, "pickup_scheduled_date")
+
+        # Shiprocket documents pickup_status=1 as a successful request.
+        if str(pickup_status) != "1" or not token:
+            shipment.pickup_operation_status = "unknown"
+            shipment.last_error = (
+                "Shiprocket did not confirm pickup. Reconciliation required."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Pickup was not confirmed. Check Shiprocket before retrying."
+            )
+
+        from datetime import datetime
+
+        parsed_date = None
+        if scheduled_at:
+            try:
+                parsed_date = datetime.strptime(
+                    scheduled_at,
+                    "%Y-%m-%d %H:%M:%S",
+                ).replace(tzinfo=__import__("zoneinfo").ZoneInfo("Asia/Kolkata"))
+            except (TypeError, ValueError):
+                # Preserve the token even if the optional date format changes.
+                parsed_date = None
+
+        shipment.pickup_token_number = str(token)
+        shipment.pickup_scheduled_at = parsed_date
+        shipment.status = "pickup_requested"
+        shipment.pickup_operation_status = "succeeded"
+        shipment.last_error = None
+
+        try:
+            self.db.commit()
+            self.db.refresh(shipment)
+        except Exception:
+            self.db.rollback()
+            raise ShiprocketError(
+                "Pickup may be scheduled, but saving the response failed. "
+                "Reconcile before retrying."
+            ) from None
+
+        return shipment
+
+
+
+    def generate_label(
+        self,
+        *,
+        order_public_id: str,
+    ) -> Shipment:
+        """Generate and persist the Shiprocket shipping-label URL."""
+        order = self.db.scalar(
+            select(Order).where(Order.public_id == order_public_id)
+        )
+
+        if order is None:
+            raise ValueError("Order not found.")
+
+        shipment = self.repository.get_by_order_id(
+            order.id,
+            for_update=True,
+        )
+
+        if shipment is None:
+            raise ValueError("Create the shipment first.")
+
+        if not shipment.shiprocket_shipment_id:
+            raise ValueError("Shiprocket shipment ID is missing.")
+
+        if not shipment.awb_code:
+            raise ValueError(
+                "Assign a courier and AWB before generating the label."
+            )
+
+        if shipment.status in {"creation_unknown", "awb_unknown"}:
+            raise ValueError(
+                "Shipment state is uncertain. Reconcile it with Shiprocket."
+            )
+
+        if shipment.label_url:
+            return shipment
+
+        self._claim_operation(shipment, "label")
+
+        try:
+            response = self.shiprocket.request(
+                "POST",
+                "/courier/generate/label",
+                json={
+                    "shipment_id": [
+                        int(shipment.shiprocket_shipment_id)
+                    ]
+                },
+            )
+        except Exception:
+            shipment.label_operation_status = "unknown"
+            shipment.last_error = (
+                "Label generation outcome is uncertain. "
+                "Check Shiprocket before retrying."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Label generation could not be confirmed. "
+                "Check Shiprocket before retrying."
+            ) from None
+
+        if not isinstance(response, dict):
+            shipment.label_operation_status = "unknown"
+            shipment.last_error = "Unexpected label-generation response."
+            self.db.commit()
+            raise ShiprocketError(
+                "Unexpected label response. Check Shiprocket before retrying."
+            )
+
+        label_url = _find_response_value(response, "label_url")
+        label_created = _find_response_value(response, "label_created")
+
+        if label_created not in (1, True, "1") or not label_url:
+            shipment.label_operation_status = "unknown"
+            shipment.last_error = (
+                "Shiprocket did not confirm label generation."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Shiprocket did not confirm label generation. "
+                "Check Shiprocket before retrying."
+            )
+
+        if not isinstance(label_url, str) or not label_url.startswith(
+            "https://"
+        ):
+            shipment.label_operation_status = "unknown"
+            shipment.last_error = "Shiprocket returned an invalid label URL."
+            self.db.commit()
+            raise ShiprocketError(
+                "Shiprocket returned an invalid label URL."
+            )
+
+        shipment.label_url = label_url
+        shipment.label_operation_status = "succeeded"
+        shipment.last_error = None
+
+        try:
+            self.db.commit()
+            self.db.refresh(shipment)
+        except Exception:
+            self.db.rollback()
+            raise ShiprocketError(
+                "The label may have been generated, but saving its URL failed. "
+                "Check Shiprocket before retrying."
+            ) from None
+
+        return shipment
+
+
+
+    def generate_manifest(
+        self,
+        *,
+        order_public_id: str,
+    ) -> Shipment:
+        """Generate and persist the Shiprocket manifest URL."""
+        order = self.db.scalar(
+            select(Order).where(Order.public_id == order_public_id)
+        )
+
+        if order is None:
+            raise ValueError("Order not found.")
+
+        shipment = self.repository.get_by_order_id(
+            order.id,
+            for_update=True,
+        )
+
+        if shipment is None:
+            raise ValueError("Create the shipment first.")
+
+        if not shipment.shiprocket_shipment_id:
+            raise ValueError("Shiprocket shipment ID is missing.")
+
+        if not shipment.awb_code:
+            raise ValueError("Assign a courier and AWB first.")
+
+        if not shipment.pickup_token_number:
+            raise ValueError(
+                "A confirmed pickup request is required before manifest generation."
+            )
+
+        if shipment.status in {
+            "creation_unknown",
+            "awb_unknown",
+            "pickup_unknown",
+        }:
+            raise ValueError(
+                "Shipment state is uncertain. Reconcile it with Shiprocket first."
+            )
+
+        if shipment.manifest_url:
+            return shipment
+
+        self._claim_operation(shipment, "manifest")
+
+        try:
+            response = self.shiprocket.request(
+                "POST",
+                "/manifests/generate",
+                json={
+                    "shipment_id": [
+                        int(shipment.shiprocket_shipment_id)
+                    ]
+                },
+            )
+        except Exception:
+            shipment.manifest_operation_status = "unknown"
+            shipment.last_error = (
+                "Manifest generation outcome is uncertain. "
+                "Check Shiprocket before retrying."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Manifest generation could not be confirmed. "
+                "Check Shiprocket before retrying."
+            ) from None
+
+        if not isinstance(response, dict):
+            shipment.manifest_operation_status = "unknown"
+            shipment.last_error = "Unexpected manifest-generation response."
+            self.db.commit()
+            raise ShiprocketError(
+                "Unexpected manifest response. Reconcile before retrying."
+            )
+
+        manifest_url = _find_response_value(response, "manifest_url")
+        result_status = _find_response_value(response, "status")
+
+        if result_status not in (1, True, "1") or not manifest_url:
+            shipment.manifest_operation_status = "unknown"
+            shipment.last_error = (
+                "Shiprocket did not confirm manifest generation."
+            )
+            self.db.commit()
+            raise ShiprocketError(
+                "Manifest generation was not confirmed. "
+                "Check Shiprocket before retrying."
+            )
+
+        if (
+            not isinstance(manifest_url, str)
+            or not manifest_url.startswith("https://")
+        ):
+            shipment.manifest_operation_status = "unknown"
+            shipment.last_error = "Shiprocket returned an invalid manifest URL."
+            self.db.commit()
+            raise ShiprocketError(
+                "Shiprocket returned an invalid manifest URL."
+            )
+
+        shipment.manifest_url = manifest_url
+        shipment.manifest_operation_status = "succeeded"
+        shipment.last_error = None
+
+        try:
+            self.db.commit()
+            self.db.refresh(shipment)
+        except Exception:
+            self.db.rollback()
+            raise ShiprocketError(
+                "The manifest may have been generated, but saving its URL "
+                "failed. Reconcile before retrying."
+            ) from None
+
+        return shipment
+
 
     @staticmethod
     def _validate_package(package: ShipmentCreateRequest) -> None:

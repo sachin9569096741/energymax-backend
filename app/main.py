@@ -100,6 +100,11 @@ from app.modules.affiliate.routes.admin import (
     affiliates_router as affiliates_admin_router,
 )
 
+from app.modules.shop.shipping.routes.webhook import (
+    router as shipping_webhook_router,
+)
+
+
 from app.modules.affiliate.routes.admin_activation import (
     router as affiliate_activation_admin_router,
 )
@@ -414,6 +419,11 @@ app.include_router(
 
 app.include_router(
     customer_notifications_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    shipping_webhook_router,
     prefix="/api/v1",
 )
 

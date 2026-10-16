@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,7 +25,19 @@ class ShipmentResponse(BaseModel):
     breadth_cm: Decimal
     height_cm: Decimal
     weight_kg: Decimal
-    created_at: object
-    updated_at: object
+    pickup_token_number: str | None
+    pickup_scheduled_at: datetime | None
+    label_url: str | None
+    manifest_url: str | None
+    awb_operation_status: str
+    pickup_operation_status: str
+    label_operation_status: str
+    manifest_operation_status: str
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AWBAssignmentRequest(BaseModel):
+    courier_id: int | None = Field(default=None, gt=0)

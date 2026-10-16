@@ -24,6 +24,18 @@ class ShipmentRepository:
 
         return self.db.scalar(statement)
 
+
+    def get_by_awb(self, awb_code: str, for_update: bool = False):
+        statement = select(Shipment).where(
+            Shipment.awb_code == awb_code
+        )
+
+        if for_update:
+            statement = statement.with_for_update()
+
+        return self.db.scalar(statement)
+
+
     def create(self, shipment: Shipment) -> Shipment:
         self.db.add(shipment)
         self.db.flush()

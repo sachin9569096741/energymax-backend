@@ -103,6 +103,37 @@ class Shipment(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    pickup_token_number: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    pickup_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    label_url: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    manifest_url: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    awb_operation_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="idle"
+    )
+    pickup_operation_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="idle"
+    )
+    label_operation_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="idle"
+    )
+    manifest_operation_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="idle"
+    )
 
     order = relationship("Order")
 

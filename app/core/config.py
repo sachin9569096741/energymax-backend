@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     shiprocket_base_url: str = (
         "https://apiv2.shiprocket.in/v1/external"
     )
+        # Shiprocket tracking webhook
+    shiprocket_webhook_secret: str = ""
 
     # Cashfree Payments
     cashfree_app_id: str

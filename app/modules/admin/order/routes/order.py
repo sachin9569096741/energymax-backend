@@ -10,6 +10,9 @@ from app.modules.shop.shipping.schemas.shipment import (
     ShipmentCreateRequest,
     ShipmentResponse,
 )
+from app.modules.shop.shipping.schemas.shipment import (
+    AWBAssignmentRequest,
+)
 from app.modules.shop.shipping.services.shipment import ShipmentService
 from app.core.shiprocket import ShiprocketError
 from fastapi import Query
@@ -99,7 +102,133 @@ def update_order_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    
+
+
+@router.post(
+    "/{order_public_id}/shipment/awb",
+    response_model=ShipmentResponse,
+)
+def assign_order_awb(
+    order_public_id: str,
+    payload: AWBAssignmentRequest,
+    current_admin: AdminUser = Depends(
+        require_permission("orders.update_status")
+    ),
+    db: Session = Depends(get_db),
+):
+    service = ShipmentService(db)
+
+    try:
+        return service.assign_awb(
+            order_public_id=order_public_id,
+            courier_id=payload.courier_id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ShiprocketError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+
+@router.post(
+    "/{order_public_id}/shipment/pickup",
+    response_model=ShipmentResponse,
+)
+def request_order_pickup(
+    order_public_id: str,
+    current_admin: AdminUser = Depends(
+        require_permission("orders.update_status")
+    ),
+    db: Session = Depends(get_db),
+):
+    service = ShipmentService(db)
+
+    try:
+        return service.request_pickup(
+            order_public_id=order_public_id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ShiprocketError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+
+
+@router.post(
+    "/{order_public_id}/shipment/label",
+    response_model=ShipmentResponse,
+)
+def generate_order_shipment_label(
+    order_public_id: str,
+    current_admin: AdminUser = Depends(
+        require_permission("orders.update_status")
+    ),
+    db: Session = Depends(get_db),
+):
+    service = ShipmentService(db)
+
+    try:
+        return service.generate_label(
+            order_public_id=order_public_id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ShiprocketError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+
+@router.post(
+    "/{order_public_id}/shipment/manifest",
+    response_model=ShipmentResponse,
+)
+def generate_order_shipment_manifest(
+    order_public_id: str,
+    current_admin: AdminUser = Depends(
+        require_permission("orders.update_status")
+    ),
+    db: Session = Depends(get_db),
+):
+    service = ShipmentService(db)
+
+    try:
+        return service.generate_manifest(
+            order_public_id=order_public_id,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ShiprocketError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
 
 @router.get(
     "",
