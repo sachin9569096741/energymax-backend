@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
+    REDIS_URL: str | None = None
 
     # Cloudinary
     cloudinary_cloud_name: str
@@ -31,6 +32,8 @@ class Settings(BaseSettings):
         "energymaxgroup.in",
         "www.energymaxgroup.in"
     )
+
+    
 
     shiprocket_api_email: str = ""
     shiprocket_api_password: str = ""

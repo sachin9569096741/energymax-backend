@@ -26,6 +26,9 @@ from app.modules.admin.auth.routes.permissions import (
     roles_router as admin_roles_router,
     user_permissions_router as admin_user_permissions_router,
 )
+from app.modules.affiliate.routes.referral import (
+    router as affiliate_referral_router,
+)
 
 
 # ============================================================
@@ -334,6 +337,10 @@ app.include_router(affiliate_auth_router, prefix="/api/v1")
 
 app.include_router(
     affiliate_activation_admin_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    affiliate_referral_router,
     prefix="/api/v1",
 )
 
