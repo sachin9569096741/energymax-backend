@@ -54,12 +54,33 @@ def track_affiliate_referral(
     the visitor to the storefront with the referral code.
     """
     affiliate = db.scalar(
-        select(Affiliate).where(
-            Affiliate.public_code == public_code,
-            Affiliate.status == "active",
-            Affiliate.activated_at.is_not(None),
-        )
+    select(Affiliate).where(
+        Affiliate.public_code == public_code,
     )
+)
+
+    if affiliate is None:
+        logger.warning(
+            "Referral lookup: code not found; code=%s",
+            public_code,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail="Referral code not found in connected database.",
+        )
+
+    logger.info(
+        "Referral lookup: id=%s status=%s activated=%s",
+        affiliate.id,
+        affiliate.status,
+        affiliate.activated_at is not None,
+    )
+
+    if affiliate.status != "active" or affiliate.activated_at is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Referral link is invalid or inactive.",
+        )
 
     if affiliate is None:
         raise HTTPException(
