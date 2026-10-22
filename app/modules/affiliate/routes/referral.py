@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -53,6 +53,21 @@ def track_affiliate_referral(
     Record an eligible affiliate referral click and redirect
     the visitor to the storefront with the referral code.
     """
+    diagnostic = db.execute(
+        text("""
+            SELECT
+                current_database() AS db_name,
+                current_schema() AS schema_name,
+                COUNT(*) AS affiliate_count,
+                COUNT(*) FILTER (
+                    WHERE public_code = :code
+                ) AS matching_code_count
+            FROM public.affiliates
+        """),
+        {"code": public_code},
+    ).mappings().one()
+    logger.warning("Referral database diagnostic: %s", dict(diagnostic))
+
     affiliate = db.scalar(
     select(Affiliate).where(
         Affiliate.public_code == public_code,
