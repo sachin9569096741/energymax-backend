@@ -20,7 +20,9 @@ from app.modules.admin.auth.routes.auth import (
 from app.modules.admin.auth.routes.admin_user import (
     router as admin_user_router,
 )
-
+from app.modules.affiliate.routes.dashboard import (
+    router as affiliate_dashboard_router,
+)
 from app.modules.admin.auth.routes.permissions import (
     router as admin_permissions_router,
     roles_router as admin_roles_router,
@@ -106,10 +108,38 @@ from app.modules.affiliate.routes.admin import (
 from app.modules.shop.shipping.routes.webhook import (
     router as shipping_webhook_router,
 )
+from app.modules.affiliate.routes.admin_commision import (
+    router as affiliate_commission_admin_router,
+)
+from app.modules.affiliate.routes.admin_commission_ledger import (
+    router as affiliate_commission_ledger_admin_router,
+)
 
-
+from app.modules.affiliate.routes.commission_ledger import (
+    router as affiliate_commission_ledger_router,
+)
 from app.modules.affiliate.routes.admin_activation import (
     router as affiliate_activation_admin_router,
+)
+from app.modules.affiliate.routes.performance import (
+    router as affiliate_performance_router,
+)
+from app.modules.affiliate.routes.admin_commission_mutations import (
+    router as affiliate_commission_mutations_router,
+)
+
+from app.modules.affiliate.routes.wallet import (
+    router as affiliate_wallet_router,
+)
+
+from app.modules.affiliate.routes.withdrawals import (
+    affiliate_router as affiliate_withdrawals_router,
+    admin_router as affiliate_admin_withdrawals_router,
+)
+
+from app.modules.affiliate.routes.analytics import (
+    affiliate_router as affiliate_analytics_router,
+    admin_router as affiliate_admin_analytics_router,
 )
 
 
@@ -328,6 +358,43 @@ app.include_router(affiliate_admin_router, prefix="/api/v1")
 app.include_router(affiliates_admin_router, prefix="/api/v1")
 app.include_router(affiliate_public_router, prefix="/api/v1")
 
+app.include_router(
+    affiliate_commission_admin_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    affiliate_commission_ledger_admin_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    affiliate_commission_ledger_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    affiliate_commission_mutations_router,
+    prefix="/api/v1",
+)
+
+
+app.include_router(affiliate_wallet_router, prefix="/api/v1")
+app.include_router(affiliate_withdrawals_router, prefix="/api/v1")
+app.include_router(affiliate_admin_withdrawals_router, prefix="/api/v1")
+
+# ============================================================
+# AFFILIATE ANALYTICS
+# ============================================================
+
+app.include_router(
+    affiliate_analytics_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    affiliate_admin_analytics_router,
+    prefix="/api/v1",
+)
 
 # ------------------------------------------------------------
 # AFFILIATE - AUTHENTICATION
@@ -341,6 +408,15 @@ app.include_router(
 )
 app.include_router(
     affiliate_referral_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    affiliate_dashboard_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    affiliate_performance_router,
     prefix="/api/v1",
 )
 

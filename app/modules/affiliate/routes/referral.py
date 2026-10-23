@@ -1,12 +1,14 @@
 
 import hashlib
 import hmac
-from urllib.parse import urlencode
 import logging
+import secrets
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select, text
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -25,22 +27,22 @@ router = APIRouter(
 
 
 def _visitor_hash(request: Request) -> str | None:
-    """
-    Create a keyed hash of the client IP without storing the raw IP.
-    Uses the configured application secret as the HMAC key.
-    """
+    """Create a keyed hash of the client IP without storing the raw IP."""
     client_ip = request.client.host if request.client else None
 
     if not client_ip:
         return None
 
-    digest = hmac.new(
+    return hmac.new(
         settings.jwt_secret_key.encode("utf-8"),
         client_ip.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
-    return digest
+
+def _tracking_token_hash(token: str) -> str:
+    """Hash the tracking token before storing it in the database."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 @router.get("/{public_code}", name="affiliate_referral_redirect")
@@ -49,63 +51,29 @@ def track_affiliate_referral(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """
-    Record an eligible affiliate referral click and redirect
-    the visitor to the storefront with the referral code.
-    """
-    diagnostic = db.execute(
-        text("""
-            SELECT
-                current_database() AS db_name,
-                current_schema() AS schema_name,
-                COUNT(*) AS affiliate_count,
-                COUNT(*) FILTER (
-                    WHERE public_code = :code
-                ) AS matching_code_count
-            FROM public.affiliates
-        """),
-        {"code": public_code},
-    ).mappings().one()
-    logger.warning("Referral database diagnostic: %s", dict(diagnostic))
+    """Record an eligible affiliate click and redirect to the storefront."""
 
     affiliate = db.scalar(
-    select(Affiliate).where(
-        Affiliate.public_code == public_code,
+        select(Affiliate).where(
+            Affiliate.public_code == public_code,
+            Affiliate.status == "active",
+            Affiliate.activated_at.is_not(None),
+        )
     )
-)
-
-    if affiliate is None:
-        logger.warning(
-            "Referral lookup: code not found; code=%s",
-            public_code,
-        )
-        raise HTTPException(
-            status_code=404,
-            detail="Referral code not found in connected database.",
-        )
-
-    logger.info(
-        "Referral lookup: id=%s status=%s activated=%s",
-        affiliate.id,
-        affiliate.status,
-        affiliate.activated_at is not None,
-    )
-
-    if affiliate.status != "active" or affiliate.activated_at is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Referral link is invalid or inactive.",
-        )
 
     if affiliate is None:
         raise HTTPException(
             status_code=404,
             detail="Referral link is invalid or inactive.",
         )
+
+    # Generate a unique, unpredictable referral tracking token.
+    tracking_token = secrets.token_urlsafe(32)
 
     click = AffiliateReferralClick(
         affiliate_id=affiliate.id,
         visitor_hash=_visitor_hash(request),
+        tracking_token_hash=_tracking_token_hash(tracking_token),
         user_agent=request.headers.get("user-agent"),
         referrer=request.headers.get("referer"),
     )
@@ -113,17 +81,19 @@ def track_affiliate_referral(
     try:
         db.add(click)
         db.flush()
-    except Exception:
+    except SQLAlchemyError as exc:
+        db.rollback()
         logger.exception("Failed to record affiliate referral click")
         raise HTTPException(
             status_code=503,
             detail="Referral service is temporarily unavailable.",
-        )
+        ) from exc
 
-    # Preserve any existing storefront query parameters.
     destination = settings.frontend_base_url.rstrip("/") + "/"
+
     query_params = dict(request.query_params)
     query_params["ref"] = affiliate.public_code
+    query_params["ref_token"] = tracking_token
 
     return RedirectResponse(
         url=f"{destination}?{urlencode(query_params)}",

@@ -65,7 +65,9 @@ from app.modules.shop.shipping.models.shipment import Shipment
 from app.modules.affiliate.models.affiliate_referral_click import (
     AffiliateReferralClick,
 )
-
+from app.modules.affiliate.models.affiliate_attribution import (
+    AffiliateAttribution,
+)
 
 __all__ = [
     "Category",
@@ -110,5 +112,6 @@ __all__ = [
     "Affiliate",
     "AffiliateSession",
     "AffiliateReferralClick",
+    "AffiliateAttribution",
     "Shipment",
 ]

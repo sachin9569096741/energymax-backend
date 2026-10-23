@@ -30,6 +30,15 @@ class AffiliateReferralClick(Base):
         index=True,
     )
 
+        # SHA-256 hash of the opaque referral token.
+    # Never store the raw token in the database.
+    tracking_token_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     # Store a hash, not the visitor's raw IP address.
     visitor_hash: Mapped[str | None] = mapped_column(
         String(64),
