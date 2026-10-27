@@ -16,6 +16,12 @@ from app.modules.shop.customer.services.email_templates import (
     build_order_confirmation_email,
 )
 
+from app.modules.affiliate.models.affiliate_attribution import (
+    AffiliateAttribution,
+)
+from app.modules.affiliate.services.comimsion_service import (
+    CommissionService,
+)
 logger = logging.getLogger(__name__)
 from sqlalchemy import select
 
@@ -2254,6 +2260,38 @@ class PaymentService:
                     order
 
                 )
+
+            # AFFILIATE COMMISSION — VERIFIED CASHFREE PAYMENT ONLY
+
+            attribution_id = self.db.scalar(
+                select(AffiliateAttribution.id).where(
+                    AffiliateAttribution.order_id == order.id
+
+                )
+            )
+
+            if attribution_id is not None:
+                    # Calculate the eligible amount using trusted server-side
+                    # order values. Exclude discounts, shipping and tax.
+                subtotal = Decimal(str(order.subtotal or 0))
+                discount = Decimal(str(order.discount_amount or 0))
+
+                eligible_amount = max(
+                    Decimal("0.00"),
+                    subtotal - discount,
+                ).quantize(Decimal("0.01"))
+
+                if eligible_amount > Decimal("0.00"):
+                    CommissionService(self.db).create_commission(
+                        order_id=order.id,
+                        eligible_amount=eligible_amount,
+                        idempotency_key=f"affiliate-commission-order-{order.id}",
+                        currency=str(payment.currency or "INR"),
+                        description=(
+                            f"Affiliate commission for paid order "
+                            f"{order.order_number}"
+                        ),
+                    )
 
         # =====================================================
 
