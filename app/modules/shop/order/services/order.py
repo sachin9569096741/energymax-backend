@@ -1,6 +1,6 @@
 from decimal import Decimal
 from uuid import uuid4
-
+from app.modules.affiliate.services.attribution import attribute_order
 from fastapi import HTTPException
 from sqlalchemy import select
 
@@ -44,6 +44,7 @@ class OrderService:
         self,
         checkout_public_id: str,
         customer,
+        tracking_token: str | None = None,
     ) -> Order:
         checkout = self.checkout_repository.get_by_public_id(
             public_id=checkout_public_id,
@@ -200,6 +201,13 @@ class OrderService:
 
         # Flush to ensure order.id exists before creating order items.
         self.db.flush()
+        if tracking_token:
+            attribute_order(
+                self.db,
+                order_id=order.id,
+                visitor_hash=None,
+                tracking_token=tracking_token,
+            )
 
         for checkout_item, variant, quantity in validated_items:
             order_item = OrderItem(

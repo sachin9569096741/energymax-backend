@@ -1,6 +1,19 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from sqlalchemy import select
+from pydantic import BaseModel
 
+
+class CreateOrderRequest(BaseModel):
+    tracking_token: str | None = None
+from app.modules.admin.notifications.models.admin_notification import (
+    AdminNotification,
+)
+from app.modules.admin.notifications.services.realtime_dispatcher import (
+    dispatch_admin_notification_payload,
+    serialize_admin_notification,
+)
 from app.db.session import get_db
 from app.modules.shop.customer.security.dependencies import get_current_customer
 from app.modules.shop.order.schemas.order import OrderResponse
@@ -29,6 +42,8 @@ router = APIRouter(
 )
 def create_order_from_checkout(
     checkout_public_id: str,
+    background_tasks: BackgroundTasks,
+    payload: CreateOrderRequest | None = None,
     current_customer=Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):
@@ -38,11 +53,38 @@ def create_order_from_checkout(
         order = service.create_order(
             checkout_public_id=checkout_public_id,
             customer=current_customer,
+            tracking_token=(
+                payload.tracking_token.strip()
+                if payload and payload.tracking_token
+                else None
+            )
         )
+        notifications = db.scalars(
+            select(AdminNotification).where(
+                AdminNotification.entity_type == "ORDER",
+                AdminNotification.entity_public_id == order.public_id,
+                AdminNotification.notification_type == "ORDER_CREATED",
+            )
+        ).all()
+
+
+        pending_deliveries = [
+            (
+                notification.admin_user_id,
+                serialize_admin_notification(notification),
+            )
+            for notification in notifications
+        ]
 
         db.commit()
         db.refresh(order)
 
+        for admin_user_id, payload in pending_deliveries:
+            background_tasks.add_task(
+                dispatch_admin_notification_payload,
+                admin_user_id=admin_user_id,
+                payload=payload,
+            )
         return order
 
     except Exception:

@@ -52,6 +52,9 @@ from app.modules.admin.analytics.routes.overview import (
 from app.modules.admin.notifications.routes.notification import (
     router as admin_notifications_router,
 )
+from app.modules.admin.notifications.routes.realtime import (
+    router as admin_notifications_realtime_router,
+)
 
 
 # ============================================================
@@ -307,7 +310,15 @@ app.include_router(admin_order_router, prefix="/api/v1")
 app.include_router(admin_analytics_router, prefix="/api/v1")
 app.include_router(admin_notifications_router, prefix="/api/v1")
 
+app.include_router(
+    admin_notifications_router,
+    prefix="/api/v1",
+)
 
+app.include_router(
+    admin_notifications_realtime_router,
+    prefix="/api/v1",
+)
 # ------------------------------------------------------------
 # ADMIN - INVENTORY
 # ------------------------------------------------------------
@@ -390,7 +401,9 @@ app.include_router(
     affiliate_analytics_router,
     prefix="/api/v1",
 )
-
+from app.modules.admin.notifications.routes.realtime import (
+    router as admin_notifications_realtime_router,
+)
 app.include_router(
     affiliate_admin_analytics_router,
     prefix="/api/v1",
