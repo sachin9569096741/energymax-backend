@@ -286,6 +286,10 @@ app.add_middleware(
         "http://127.0.0.1:5500",
         "https://energymaxgroup.in",
         "https://www.energymaxgroup.in",
+        "https://www.energymax.in",
+        "https://energymaxgroup.in",
+        
+
     ],
     allow_credentials=True,
     allow_methods=["*"],
