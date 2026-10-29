@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 import re
-
+from app.modules.affiliate.services.kyc_eligibility_service import (
+    require_verified_kyc,
+)
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -180,6 +182,11 @@ class WithdrawalService:
         currency: str,
         idempotency_key: str,
     ) -> AffiliateWithdrawal:
+
+        require_verified_kyc(
+            db=self.db,
+            affiliate_id=affiliate.id,
+        )
 
         try:
             amount = WalletService.money(amount)
@@ -395,6 +402,11 @@ class WithdrawalService:
 
         withdrawal = self._lock_withdrawal(public_id)
 
+        require_verified_kyc(
+            db=self.db,
+            affiliate_id=withdrawal.affiliate_id,
+        )
+
         if withdrawal.status != "PENDING":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -470,6 +482,11 @@ class WithdrawalService:
         )
 
         withdrawal = self._lock_withdrawal(public_id)
+
+        require_verified_kyc(
+            db=self.db,
+            affiliate_id=withdrawal.affiliate_id,
+        )
 
         if withdrawal.status != "APPROVED":
             raise HTTPException(

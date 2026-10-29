@@ -170,3 +170,16 @@ async def submit_manual_kyc(
     finally:
         for _, upload in uploads:
             await upload.close()
+
+
+@router.get("/documents")
+def get_manual_kyc_documents(
+    affiliate=Depends(get_current_affiliate),
+    db=Depends(get_db),
+):
+    service = ManualKYCService(db)
+
+    try:
+        return service.get_documents(affiliate.id)
+    except ManualKYCError as exc:
+        raise map_kyc_exception(exc) from exc

@@ -431,6 +431,51 @@ class ManualKYCService:
     # Admin: list submissions
     # ---------------------------------------------------------
 
+
+    def get_documents(self, affiliate_id: int) -> dict:
+        self._get_affiliate(affiliate_id)
+
+        submission = self.db.scalar(
+            select(AffiliateKYCSubmission)
+            .where(
+                AffiliateKYCSubmission.affiliate_id == affiliate_id
+            )
+            .order_by(
+                AffiliateKYCSubmission.created_at.desc(),
+                AffiliateKYCSubmission.id.desc(),
+            )
+        )
+
+        if submission is None:
+            return {
+                "status": "NOT_STARTED",
+                "submission_id": None,
+                "documents": [],
+            }
+
+        documents = self.db.scalars(
+            select(AffiliateKYCDocument)
+            .where(
+                AffiliateKYCDocument.submission_id == submission.id
+            )
+            .order_by(AffiliateKYCDocument.document_type)
+        ).all()
+
+        return {
+            "status": submission.status,
+            "submission_id": submission.public_id,
+            "documents": [
+                {
+                    "document_type": document.document_type,
+                    "uploaded": True,
+                    "original_filename": document.original_filename,
+                    "content_type": document.content_type,
+                    "file_size_bytes": document.file_size_bytes,
+                    "uploaded_at": document.uploaded_at,
+                }
+                for document in documents
+            ],
+        }
     def list_submissions(
         self,
         *,

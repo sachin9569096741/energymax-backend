@@ -102,3 +102,16 @@ class ManualKYCSubmissionResponse(BaseModel):
     review_history: list[KYCReviewHistoryResponse] = Field(
         default_factory=list
     )
+
+
+class KYCReassignmentRequest(BaseModel):
+    reviewer_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class KYCReassignmentResponse(BaseModel):
+    submission_id: str
+    status: str
+    previous_reviewer_id: int | None
+    assigned_reviewer_id: int
+    reason: str
