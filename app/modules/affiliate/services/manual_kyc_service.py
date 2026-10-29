@@ -105,6 +105,8 @@ class ManualKYCService:
             select(AffiliateKYCSubmission)
             .options(
                 selectinload(AffiliateKYCSubmission.documents),
+
+                selectinload(AffiliateKYCSubmission.documents),
                 selectinload(AffiliateKYCSubmission.review_history),
             )
             .where(AffiliateKYCSubmission.id == submission_id)

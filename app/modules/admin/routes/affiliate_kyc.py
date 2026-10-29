@@ -84,6 +84,22 @@ def serialize_submission(submission):
     return {
         "public_id": submission.public_id,
         "affiliate_id": submission.affiliate_id,
+        "affiliate":(
+            {
+                "id": submission.affiliate.public_id,
+                "full_name": submission.affiliate.full_name,
+                "email": submission.affiliate.email,
+                "phone": submission.affiliate.phone,
+                "affiliate_code": submission.affiliate.public_code,
+                "account_status": submission.affiliate.status,
+                "registered_at": submission.affiliate.created_at,
+
+            }
+            if submission.affiliate is not None
+            else None
+            
+        ),
+        
         "status": submission.status,
         "assigned_reviewer_id": submission.assigned_reviewer_id,
         "submitted_at": submission.submitted_at,

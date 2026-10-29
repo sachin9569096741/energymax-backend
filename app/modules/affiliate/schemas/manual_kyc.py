@@ -58,17 +58,32 @@ class KYCReviewHistoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AdminAffiliateProfileResponse(BaseModel):
+    id: str
+    full_name: str
+    email: str
+    phone: str | None = None
+    affiliate_code: str
+    account_status: str
+    registered_at: datetime
+
+
 class AdminKYCSubmissionResponse(BaseModel):
     public_id: str
     affiliate_id: int
+
+    affiliate: AdminAffiliateProfileResponse | None = None
+
     status: KYCStatus
     assigned_reviewer_id: int | None = None
     submitted_at: datetime
     reviewed_at: datetime | None = None
     decision_reason: str | None = None
+
     documents: list[KYCDocumentResponse] = Field(
         default_factory=list
     )
+
     review_history: list[KYCReviewHistoryResponse] = Field(
         default_factory=list
     )
@@ -115,3 +130,4 @@ class KYCReassignmentResponse(BaseModel):
     previous_reviewer_id: int | None
     assigned_reviewer_id: int
     reason: str
+
