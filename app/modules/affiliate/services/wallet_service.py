@@ -14,7 +14,7 @@ from app.modules.affiliate.models.affiliate_withdrawal import (
 
 
 CENT = Decimal("0.01")
-ACTIVE_WITHDRAWAL_STATES = ("PENDING", "APPROVED")
+ACTIVE_WITHDRAWAL_STATES = ("PENDING", "APPROVED", "PROCESSING",)
 
 
 class WalletService:

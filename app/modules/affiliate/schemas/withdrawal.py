@@ -56,5 +56,37 @@ class WithdrawalResponse(BaseModel):
     reviewed_at: datetime | None
     reviewed_by_admin_id: int | None
     paid_at: datetime | None
+    provider: str | None
+    provider_reference: str | None
+    beneficiary_reference: str | None
+    payment_initiated_at: datetime | None
+    failure_reason: str | None
+    last_provider_status: str | None
     created_at: datetime
     updated_at: datetime
+
+
+
+class WithdrawalStartProcessing(BaseModel):
+    provider: str = Field(min_length=2, max_length=30)
+    beneficiary_reference: str = Field(min_length=3, max_length=150)
+
+    @field_validator("provider")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        value = value.strip().upper()
+
+        if not value:
+            raise ValueError("Provider is required.")
+
+        return value
+
+    @field_validator("beneficiary_reference")
+    @classmethod
+    def normalize_beneficiary_reference(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Beneficiary reference is required.")
+
+        return value

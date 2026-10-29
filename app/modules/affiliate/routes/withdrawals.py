@@ -6,17 +6,15 @@ from app.db.session import get_db
 from app.modules.admin.auth.models.admin_user import AdminUser
 from app.modules.admin.auth.security.dependencies import require_super_admin
 from app.modules.affiliate.models.affiliate import Affiliate
-from app.modules.affiliate.models.affiliate_withdrawal import (
-    AffiliateWithdrawal,
-)
 from app.modules.affiliate.schemas.withdrawal import (
     WithdrawalCreate,
-    WithdrawalMarkPaid,
     WithdrawalReject,
     WithdrawalResponse,
+    WithdrawalStartProcessing,
 )
 from app.modules.affiliate.security.dependencies import get_current_affiliate
 from app.modules.affiliate.services.withdrawal_service import WithdrawalService
+
 
 affiliate_router = APIRouter(
     prefix="/affiliate/withdrawals",
@@ -28,6 +26,10 @@ admin_router = APIRouter(
     tags=["Admin - Affiliate Withdrawals"],
 )
 
+
+# ============================================================
+# AFFILIATE ROUTES
+# ============================================================
 
 @affiliate_router.post(
     "",
@@ -46,21 +48,29 @@ def request_withdrawal(
             currency=payload.currency,
             idempotency_key=payload.idempotency_key,
         )
+
         db.commit()
         db.refresh(withdrawal)
+
         return withdrawal
+
     except HTTPException:
         db.rollback()
         raise
+
     except IntegrityError as exc:
         db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A conflicting withdrawal request exists.",
         ) from exc
 
 
-@affiliate_router.get("", response_model=list[WithdrawalResponse])
+@affiliate_router.get(
+    "",
+    response_model=list[WithdrawalResponse],
+)
 def my_withdrawals(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -74,9 +84,19 @@ def my_withdrawals(
     )
 
 
-@admin_router.get("", response_model=list[WithdrawalResponse])
+# ============================================================
+# ADMIN ROUTES
+# ============================================================
+
+@admin_router.get(
+    "",
+    response_model=list[WithdrawalResponse],
+)
 def admin_list_withdrawals(
-    withdrawal_status: str | None = Query(default=None, alias="status"),
+    withdrawal_status: str | None = Query(
+        default=None,
+        alias="status",
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _admin: AdminUser = Depends(require_super_admin),
@@ -101,6 +121,11 @@ def admin_get_withdrawal(
     return WithdrawalService(db).get_by_public_id(public_id)
 
 
+# ------------------------------------------------------------
+# APPROVE
+# PENDING -> APPROVED
+# ------------------------------------------------------------
+
 @admin_router.post(
     "/{public_id}/approve",
     response_model=WithdrawalResponse,
@@ -111,14 +136,25 @@ def approve_withdrawal(
     db: Session = Depends(get_db),
 ):
     try:
-        withdrawal = WithdrawalService(db).approve(public_id, admin)
+        withdrawal = WithdrawalService(db).approve(
+            public_id,
+            admin,
+        )
+
         db.commit()
         db.refresh(withdrawal)
+
         return withdrawal
+
     except HTTPException:
         db.rollback()
         raise
 
+
+# ------------------------------------------------------------
+# REJECT
+# PENDING -> REJECTED
+# ------------------------------------------------------------
 
 @admin_router.post(
     "/{public_id}/reject",
@@ -136,33 +172,53 @@ def reject_withdrawal(
             admin,
             payload.reason,
         )
+
         db.commit()
         db.refresh(withdrawal)
+
         return withdrawal
+
     except HTTPException:
         db.rollback()
         raise
 
 
+# ------------------------------------------------------------
+# START PROCESSING
+# APPROVED -> PROCESSING
+# ------------------------------------------------------------
+
 @admin_router.post(
-    "/{public_id}/mark-paid",
+    "/{public_id}/start-processing",
     response_model=WithdrawalResponse,
 )
-def mark_withdrawal_paid(
+def start_withdrawal_processing(
     public_id: str,
-    payload: WithdrawalMarkPaid,
+    payload: WithdrawalStartProcessing,
     admin: AdminUser = Depends(require_super_admin),
     db: Session = Depends(get_db),
 ):
     try:
-        withdrawal = WithdrawalService(db).mark_paid(
+        withdrawal = WithdrawalService(db).start_processing(
             public_id,
             admin,
-            payload.payout_reference,
+            provider=payload.provider,
+            beneficiary_reference=payload.beneficiary_reference,
         )
+
         db.commit()
         db.refresh(withdrawal)
+
         return withdrawal
+
     except HTTPException:
         db.rollback()
         raise
+
+    except IntegrityError as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Could not start withdrawal processing.",
+        ) from exc

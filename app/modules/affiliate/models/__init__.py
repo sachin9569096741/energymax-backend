@@ -17,6 +17,18 @@ from app.modules.affiliate.models.affiliate_commision_policy import (
 from app.modules.affiliate.models.affiliate_withdrawal import (
     AffiliateWithdrawal,
 )
+
+# Affiliate Manual KYC models
+from app.modules.affiliate.models.affiliate_kyc_submission import (
+    AffiliateKYCSubmission,
+)
+from app.modules.affiliate.models.affiliate_kyc_document import (
+    AffiliateKYCDocument,
+)
+from app.modules.affiliate.models.affiliate_kyc_review_history import (
+    AffiliateKYCReviewHistory,
+)
+
 __all__ = [
     "AffiliateApplication",
     "Affiliate",
@@ -25,4 +37,7 @@ __all__ = [
     "AffiliateCommissionLedger",
     "AffiliateWithdrawal",
     "AffiliateCommissionPolicy",
+    "AffiliateKYCSubmission",
+    "AffiliateKYCDocument",
+    "AffiliateKYCReviewHistory",
 ]

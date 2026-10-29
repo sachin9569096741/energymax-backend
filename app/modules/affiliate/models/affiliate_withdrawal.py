@@ -26,7 +26,7 @@ class AffiliateWithdrawal(Base):
             name="ck_affiliate_withdrawal_amount_positive",
         ),
         CheckConstraint(
-            "status IN ('PENDING', 'APPROVED', 'REJECTED', 'PAID')",
+            "status IN ('PENDING', 'APPROVED',PROCESSING','FAILED' 'REJECTED', 'PAID')",
             name="ck_affiliate_withdrawal_status",
         ),
         Index(
@@ -120,6 +120,36 @@ class AffiliateWithdrawal(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    provider: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+    provider_reference: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+        unique=True,
+)
+
+    beneficiary_reference: Mapped[str | None] = mapped_column(
+        String(150),
+        nullable=True,
+    )
+
+    payment_initiated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    failure_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    last_provider_status: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
     )
 
     affiliate = relationship("Affiliate")

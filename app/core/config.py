@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     cashfree_api_version: str = "2025-01-01"
     cashfree_webhook_url: str = ""
 
+    cashfree_verification_client_id: str = ""
+    cashfree_verification_client_secret: str = ""
+    cashfree_verification_environment: str = "sandbox"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

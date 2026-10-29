@@ -23,6 +23,13 @@ from app.modules.admin.auth.routes.admin_user import (
 from app.modules.affiliate.routes.dashboard import (
     router as affiliate_dashboard_router,
 )
+from app.modules.affiliate.routes.manual_kyc import (
+    router as affiliate_manual_kyc_router,
+)
+
+from app.modules.admin.routes.affiliate_kyc import (
+    router as admin_affiliate_kyc_router,
+)
 from app.modules.admin.auth.routes.permissions import (
     router as admin_permissions_router,
     roles_router as admin_roles_router,
@@ -153,7 +160,7 @@ from app.modules.affiliate.routes.analytics import (
 from app.modules.affiliate.routes.auth import (
     router as affiliate_auth_router,
 )
-
+from app.modules.affiliate.routes.kyc import router as affiliate_kyc_router
 
 # ============================================================
 # SHOP - CATALOG
@@ -368,7 +375,16 @@ app.include_router(admin_coupon_router, prefix="/api/v1")
 app.include_router(affiliate_admin_router, prefix="/api/v1")
 app.include_router(affiliates_admin_router, prefix="/api/v1")
 app.include_router(affiliate_public_router, prefix="/api/v1")
+app.include_router(affiliate_kyc_router, prefix="/api/v1")
+app.include_router(
+    affiliate_manual_kyc_router,
+    prefix="/api/v1",
+)
 
+app.include_router(
+    admin_affiliate_kyc_router,
+    prefix="/api/v1",
+)
 app.include_router(
     affiliate_commission_admin_router,
     prefix="/api/v1",

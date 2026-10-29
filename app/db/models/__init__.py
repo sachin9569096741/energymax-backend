@@ -69,6 +69,16 @@ from app.modules.affiliate.models.affiliate_attribution import (
     AffiliateAttribution,
 )
 
+from app.modules.affiliate.models.affiliate_kyc_submission import (
+    AffiliateKYCSubmission,
+)
+from app.modules.affiliate.models.affiliate_kyc_document import (
+    AffiliateKYCDocument,
+)
+from app.modules.affiliate.models.affiliate_kyc_review_history import (
+    AffiliateKYCReviewHistory,
+)
+
 __all__ = [
     "Category",
     "Subcategory",
@@ -114,4 +124,7 @@ __all__ = [
     "AffiliateReferralClick",
     "AffiliateAttribution",
     "Shipment",
+    "AffiliateKYCSubmission",
+    "AffiliateKYCDocument",
+    "AffiliateKYCReviewHistory",
 ]
