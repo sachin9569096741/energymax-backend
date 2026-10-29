@@ -10,6 +10,15 @@ from sqlalchemy import (
     String,
     Text,
 )
+from typing import TYPE_CHECKING
+
+from sqlalchemy.orm import Mapped, relationship
+
+if TYPE_CHECKING:
+    from app.modules.affiliate.models.affiliate_kyc_submission import (
+        AffiliateKYCSubmission,
+    )
+from app.modules.admin.auth.models.admin_user import AdminUser
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
