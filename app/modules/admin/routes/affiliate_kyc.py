@@ -26,7 +26,7 @@ from app.modules.affiliate.services.manual_kyc_service import (
 )
 from app.modules.affiliate.services.kyc_storage import (
     KYCStorageError,
-    LocalDevelopmentKYCStorage,
+    get_kyc_storage as build_kyc_storage,
 )
 from app.modules.affiliate.models.affiliate_kyc_submission import (
     AffiliateKYCSubmission,
@@ -59,11 +59,11 @@ def get_manual_kyc_service(
 
 def get_kyc_storage():
     try:
-        return LocalDevelopmentKYCStorage()
+        return build_kyc_storage()
     except KYCStorageError as exc:
         raise HTTPException(
             status_code=503,
-            detail="Private KYC storage is not configured.",
+            detail="Private KYC storage is unavailable.",
         ) from exc
 
 

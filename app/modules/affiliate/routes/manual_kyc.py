@@ -23,7 +23,7 @@ from app.modules.affiliate.services.manual_kyc_service import (
 )
 from app.modules.affiliate.services.kyc_storage import (
     KYCStorageError,
-    LocalDevelopmentKYCStorage,
+    get_kyc_storage as build_kyc_storage,
 )
 from app.modules.affiliate.schemas.manual_kyc import (
     ManualKYCStatusResponse,
@@ -39,11 +39,11 @@ router = APIRouter(
 
 def get_kyc_storage():
     try:
-        return LocalDevelopmentKYCStorage()
+        return build_kyc_storage()
     except KYCStorageError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Private KYC storage is not configured.",
+            status_code=503,
+            detail="Private KYC storage is unavailable.",
         ) from exc
 
 
