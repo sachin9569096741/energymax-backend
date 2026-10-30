@@ -1,13 +1,7 @@
+import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
-from app.db.session import get_db
-from app.modules.affiliate.services.digilocker_webhook_service import (
-    digilocker_webhook_service,
-)
+from fastapi import APIRouter, Request
 
 logger = logging.getLogger(__name__)
 
@@ -17,47 +11,67 @@ router = APIRouter(
 )
 
 
-class DigiLockerWebhookPayload(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    type: str
-    verification_id: str
-    status: str | None = None
-    event: str | None = None
-
-
 @router.post("/webhook")
-async def digilocker_webhook(
-    payload: DigiLockerWebhookPayload,
-    db: Session = Depends(get_db),
-):
-    event_type = payload.type or payload.event or "unknown"
+async def digilocker_webhook(request: Request):
+    """
+    Receive Cashfree webhook requests.
 
-    logger.info(
-        "DigiLocker webhook received; event_type=%s",
-        event_type[:100],
-    )
+    This endpoint is currently in integration-testing mode.
+    It does not update KYC status.
+    """
 
-    # This lookup is for integration development only.
-    # The event is not trusted until Cashfree authentication is verified.
-    record = digilocker_webhook_service.find_verification(
-        db=db,
-        verification_id=payload.verification_id,
-    )
+    try:
+        raw_body = await request.body()
 
-    if record is None:
-        raise HTTPException(
-            status_code=404,
-            detail="DigiLocker verification record not found.",
+        if not raw_body:
+            logger.info(
+                "DigiLocker webhook endpoint connectivity test received."
+            )
+
+            return {
+                "received": True,
+                "processed": False,
+                "message": "Webhook endpoint is reachable.",
+            }
+
+        try:
+            payload = json.loads(raw_body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {
+                "received": True,
+                "processed": False,
+                "message": "Webhook received; JSON parsing failed.",
+            }
+
+        if not isinstance(payload, dict):
+            return {
+                "received": True,
+                "processed": False,
+                "message": "Webhook received; expected a JSON object.",
+            }
+
+        event_type = (
+            payload.get("type")
+            or payload.get("event")
+            or "unknown"
         )
 
-    return {
-        "received": True,
-        "processed": False,
-        "verification_id": record.verification_id,
-        "local_status": record.status,
-        "message": (
-            "Verification record found. Cashfree webhook authentication "
-            "and event mapping are still required."
-        ),
-    }
+        logger.info(
+            "DigiLocker webhook received; event_type=%s",
+            str(event_type)[:100],
+        )
+
+        # Do not trust or process events until Cashfree's
+        # webhook authentication and event schema are verified.
+        return {
+            "received": True,
+            "processed": False,
+            "message": (
+                "Webhook received. Authentication and event "
+                "validation are required before processing."
+            ),
+        }
+
+    except Exception:
+        logger.exception("DigiLocker webhook request failed.")
+        raise

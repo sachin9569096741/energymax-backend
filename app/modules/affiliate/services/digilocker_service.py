@@ -99,11 +99,17 @@ class DigiLockerService:
             data = {}
 
         if not response.is_success:
+            provider_error_code= (
+                data.get("code")
+                if isinstance(data, dict)
+                else None
+            )
             # Do not return provider response bodies directly because they
             # may contain sensitive identity information.
             logger.warning(
                 "Cashfree DigiLocker returned HTTP %s.",
                 response.status_code,
+                provider_error_code,
             )
 
             if response.status_code == 401:
