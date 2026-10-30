@@ -152,7 +152,9 @@ from app.modules.affiliate.routes.analytics import (
     admin_router as affiliate_admin_analytics_router,
 )
 
-
+from app.modules.affiliate.routes.digilocker_webhook import (
+    router as digilocker_webhook_router,
+)
 # ============================================================
 # AFFILIATE - AUTHENTICATION
 # ============================================================
@@ -241,7 +243,7 @@ from app.modules.shop.coupons.routes import (
     customer_router as customer_coupon_router,
 )
 
-
+from app.modules.affiliate.routes.digilocker import router as digilocker_router
 # ============================================================
 # SHOP - CHECKOUT, ORDERS & PAYMENTS
 # ============================================================
@@ -382,6 +384,15 @@ app.include_router(affiliate_public_router, prefix="/api/v1")
 app.include_router(affiliate_kyc_router, prefix="/api/v1")
 app.include_router(
     affiliate_manual_kyc_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    digilocker_router,
+    prefix="/api/v1",
+    
+)
+app.include_router(
+    digilocker_webhook_router,
     prefix="/api/v1",
 )
 

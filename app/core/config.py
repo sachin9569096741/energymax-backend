@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     cashfree_verification_client_id: str = ""
     cashfree_verification_client_secret: str = ""
-    cashfree_verification_environment: str = "sandbox"
+    cashfree_verification_environment: str = "prod"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -78,6 +78,9 @@ from app.modules.affiliate.models.affiliate_kyc_document import (
 from app.modules.affiliate.models.affiliate_kyc_review_history import (
     AffiliateKYCReviewHistory,
 )
+from app.modules.affiliate.models.digilocker_verification import (
+    DigiLockerVerification,
+)
 
 __all__ = [
     "Category",
@@ -127,4 +130,5 @@ __all__ = [
     "AffiliateKYCSubmission",
     "AffiliateKYCDocument",
     "AffiliateKYCReviewHistory",
+    "DigiLockerVerification"
 ]
